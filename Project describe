@@ -1,0 +1,44 @@
+**Dự án:** Hệ thống Quản lý Thư viện và Phân quyền Truy cập Toàn diện
+**Phiên bản:** 1.0
+
+## 1. Introduction & Project Scope
+
+### 1.1. Định nghĩa Thực thể Tĩnh và Thực thể Sự kiện (Entity Classifications)
+Dựa trên cấu trúc cơ sở dữ liệu đã chuẩn hóa, các thực thể trong hệ thống được phân tách thành hai nhóm mảng dữ liệu rõ rệt nhằm phục vụ kiến trúc quản trị và tối ưu hóa hiệu năng truy vấn.
+
+**A. Nhóm Thực thể Tĩnh (Master Data / Static Entities)**
+Thực thể tĩnh là các đối tượng dữ liệu cốt lõi, tồn tại độc lập và đóng vai trò là "danh mục" hoặc "hồ sơ gốc" của hệ thống. Dữ liệu trong các bảng này có tần suất cập nhật/thêm mới (Write/Update) thấp, nhưng tần suất tra cứu (Read) rất cao.
+* **Nhóm Hồ sơ Định danh (Identity Entities):**
+  * `PERSON`: Lưu trữ hồ sơ định danh duy nhất của mọi cá nhân (SSN, Email).
+  * `UNIVERSITY_MEMBER` / `EXTERNAL_AUTHOR`: Cụ thể hóa vai trò (Sinh viên, Giảng viên, Người ngoài) dựa trên hồ sơ gốc.
+* **Nhóm Danh mục Tài nguyên (Catalog Entities):**
+  * `RESOURCE`: Siêu lớp danh mục chứa thông tin thư mục chung (Tiêu đề, Ngày xuất bản).
+  * `PHYSICAL_BOOK` / `DIGITAL_JOURNAL`: Các định dạng tài nguyên đặc tả.
+  * `BOOK_COPY`: Quản lý kho ấn bản vật lý (Được gán mã vạch tĩnh).
+* **Nhóm Khai báo Cấu hình (Configuration Entities):**
+  * `LICENSE_PACKAGE`: Danh mục các gói bản quyền do thư viện mua hoặc quy định.
+  * `AUTHOR_OF` / `RESOURCE_LICENSE`: Các bảng mapping tĩnh quy định mối liên hệ vô hướng (Tài nguyên này do ai viết, yêu cầu giấy phép nào).
+
+**B. Nhóm Thực thể Sự kiện & Giao dịch (Transactional Data / Event Entities)**
+Thực thể sự kiện là các mẩu dữ liệu liên tục được sinh ra khi có một hành động hoặc tương tác xảy ra trên trục thời gian. Chúng có đặc tính sinh trưởng nhanh, gắn liền với các vòng đời nghiệp vụ (Lifecycle) và có giới hạn thời gian thực thi (Timestamp/Due Date).
+* **Sự kiện Vận hành & Tài chính (Operational Transactions):**
+  * `BORROW`: Sự kiện một người dùng thực hiện mượn một ấn bản (`BOOK_COPY`) tại một thời điểm, tạo ra vòng đời theo dõi thời hạn trả sách.
+  * `FINE`: Sự kiện vi phạm quy định (như trễ hạn, làm hỏng sách) sinh ra khoản phạt tài chính.
+  * `PAYMENT_TRANSACTION`: Sự kiện thanh toán tiền phạt (có thể phát sinh nhiều lần trả góp cho một khoản phạt).
+* **Sự kiện Ủy quyền & Giám sát (Authorization & Logging Events):**
+  * `GRANTED_LICENSE`: Sự kiện cấp phát quyền truy cập cho một cá nhân. Nó tồn tại giới hạn trong một khoảng thời gian (`valid_from` đến `valid_to`).
+  * `ACCESS_LOG`: Sự kiện ghi nhận hành vi (lượt click, lượt tải) diễn ra trong phần nghìn giây. Đây là bảng có tốc độ phình to dữ liệu lớn nhất hệ thống, hoạt động dưới dạng Append-Only (chỉ ghi thêm, không sửa xóa).
+
+### 1.2. Business Rules & Constraints
+Hệ thống tuân thủ các quy tắc nghiệp vụ và ràng buộc cấu trúc vật lý (Physical Constraints) khắt khe sau đây để đảm bảo tính toàn vẹn dữ liệu:
+
+* **Quy tắc Quản lý Định danh (Identity Management Constraint):** 
+  Mọi cá nhân tương tác với hệ thống bắt buộc phải tồn tại trong siêu lớp `PERSON` với một `person_id` duy nhất. Việc phân cấp đối tượng nội bộ được chuẩn hóa qua mô hình Kế thừa Đơn bảng (Single Table Inheritance) tại `UNIVERSITY_MEMBER`, gộp chung các thuộc tính của Sinh viên (`major`) và Giảng viên (`academic_rank`) dưới một cờ phân loại `member_type`.
+* **Quy tắc Quản lý Bản sao Vật lý (Physical Copy Tracking Constraint):** 
+  Giao dịch mượn/trả không bao giờ được thực hiện trực tiếp trên cấp độ đầu sách (`PHYSICAL_BOOK`). Hệ thống yêu cầu mỗi giao dịch `BORROW` phải chiếu đích danh đến một bản sao cụ thể (`BOOK_COPY`) thông qua mã vạch (`barcode`) nhằm quy trách nhiệm chính xác khi phát sinh sự cố vật lý (rách, mất sách).
+* **Quy tắc Ràng buộc Thanh toán (Financial Flexibility Constraint):** 
+  Khoản phạt (`FINE`) không yêu cầu phải thanh toán dứt điểm trong một lần. Hệ thống cho phép bẻ nhỏ khoản phạt thành nhiều đợt thanh toán (`PAYMENT_TRANSACTION`), theo dõi tiến độ qua các trạng thái `UNPAID`, `PARTIAL`, và `PAID`.
+* **Quy tắc Kiểm soát Truy cập (License Entitlement Constraint):** 
+  Quyền truy cập tài nguyên (cả sách in bản đặc biệt và tài liệu số) bị khóa mặc định nếu tài nguyên đó có liên kết trong bảng `RESOURCE_LICENSE`. Giao dịch mượn hoặc tải xuống chỉ được SQL phê duyệt nếu truy vấn đối chiếu trả về kết quả người dùng đang sở hữu chứng nhận hợp lệ (`GRANTED_LICENSE`) chưa quá hạn sử dụng.
+* **Quy tắc Bất đồng bộ Nhật ký (Log Decoupling Constraint):** 
+  Bảng nhật ký tải tài nguyên số `ACCESS_LOG` phải bị vô hiệu hóa toàn bộ Ràng buộc Khóa ngoại (Foreign Key Constraints) với các bảng Master. Thay vào đó, hệ thống duy trì các Chỉ mục (Indexes) độc lập để tối ưu tốc độ sinh sự kiện (High Write-Throughput) mà không bị thắt cổ chai bởi cơ chế rà soát tính toàn vẹn (Integrity Check) của Database Engine.
