@@ -1,0 +1,4 @@
+# Project-level gitignore
+/bin/
+*.class
+*.log

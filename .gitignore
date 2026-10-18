@@ -1,0 +1,55 @@
+# =============================================================================
+# Gitignore for Digital Library Management System (Collaborative Java & MySQL Project)
+# =============================================================================
+
+# 1. Eclipse Workspace & Metadata
+/.metadata/
+.recommenders/
+.loadpath
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+
+# 2. Build outputs & Compiled files
+bin/
+Project/bin/
+*.class
+target/
+build/
+*.log
+
+# 3. IDE specific configurations (Tránh conflict giữa các IDE khác nhau trong nhóm)
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# VS Code
+.vscode/
+
+# NetBeans
+nbproject/private/
+build/
+nbbuild/
+dist/
+nbdist/
+.nb-cache/
+
+# 4. OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# 5. Local database credentials override
+# Giữ db.properties.example mẫu trên repo
+# db.properties chứa pass của từng máy
+Project/src/db.properties
