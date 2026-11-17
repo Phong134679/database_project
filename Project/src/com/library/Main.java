@@ -18,6 +18,8 @@ import com.library.service.MemberService;
 import com.library.util.DatabaseConnection;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -30,30 +32,45 @@ import java.util.List;
  */
 public class Main {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         System.out.println("===============================================================================");
         System.out.println("  DIGITAL LIBRARY MANAGEMENT SYSTEM & OPEN REPOSITORY - BACKEND DEMO          ");
         System.out.println("===============================================================================");
 
-        // 1. Kiểm tra kết nối tới MySQL và tự động khởi tạo CSDL nếu cần
-        System.out.print("[1] Kiểm tra kết nối MySQL: ");
-        boolean isConnected = DatabaseConnection.testConnection();
-        if (!isConnected) {
-            System.out.println("CHƯA KẾT NỐI ĐƯỢC CSDL 'library_db'.");
-            System.out.println("    -> Đang tự động khởi tạo CSDL và nạp dữ liệu mẫu qua DatabaseInitializer...");
-            String schema = new java.io.File("Project/schema.sql").exists() ? "Project/schema.sql" : "schema.sql";
-            String sampleData = new java.io.File("Project/sample_data.sql").exists() ? "Project/sample_data.sql" : "sample_data.sql";
-            boolean initSuccess = com.library.util.DatabaseInitializer.initializeDatabase(schema, sampleData);
-            if (initSuccess) {
-                isConnected = DatabaseConnection.testConnection();
-            }
-        }
-        
-        if (isConnected) {
-            System.out.println("KẾT NỐI THÀNH CÔNG! (URL: " + DatabaseConnection.getUrl() + ")");
-        } else {
-            System.out.println("    Vui lòng đảm bảo MySQL service đang chạy và kiểm tra thông tin trong db.properties.");
-        }
+	     // KIỂM TRA KẾT NỐI (TÀI KHOẢN & DATABASE)
+	
+	     // 1. Kiểm tra kết nối đăng nhập tài khoản MySQL Server
+	     try {
+	         System.out.print("[1] Kiểm tra kết nối tài khoản MySQL: ");
+	
+	         try (Connection serverConn = DatabaseConnection.getServerConnection()) {
+	             if (serverConn == null || serverConn.isClosed()) {
+	                 throw new SQLException("Không thể kết nối đến tài khoản MySQL Server.");
+	             }
+	
+	             System.out.println("THÀNH CÔNG!");
+	         }
+	
+	     } catch (Exception e) {
+	         System.err.println("\n[LỖI] Không thể kết nối tài khoản MySQL: " + e.getMessage());
+	         return;
+	     }
+	
+	     // 2. Kiểm tra kết nối tới database trong tài khoản
+	     System.out.print("[2] Kiểm tra kết nối tới database library_db: ");
+	
+	     Connection dbConn = DatabaseConnection.testDatabaseConnection();
+	
+	     if (dbConn == null) {
+	         System.err.println("THẤT BẠI!");
+	         System.err.println("    -> Database chưa tồn tại hoặc không thể kết nối.");
+	         System.err.println("    -> Vui lòng khởi tạo CSDL thủ công và chạy lại ứng dụng!");
+	         return;
+	     }
+	
+	     System.out.println("THÀNH CÔNG! (URL: " + DatabaseConnection.getUrl() + ")");
+	
+	     dbConn.close();
 
         // 2. Khởi tạo toàn bộ các Repositories của Backend
         PersonRepository personRepo = new PersonRepository();

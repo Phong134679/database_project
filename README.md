@@ -7,26 +7,12 @@ Dự án được xây dựng theo mô hình kiến trúc **MVC (Model - View - 
 
 ## Những Điểm Mới & Cập nhật Nâng cấp Dự án (Changelog & Upgrades)
 
-So với mô tả ban đầu (phiên bản khởi tạo ban đầu chỉ có khung tương tác cơ bản cho bảng `BORROW`), dự án hiện tại đã được nâng cấp và hoàn thiện toàn diện với các bổ sung trọng tâm sau:
+So với phiên bản khung cơ bản ban đầu, dự án đã được nâng cấp và hoàn thiện toàn diện với các điểm chính:
 
-1. **Tự động hóa 100% Khởi tạo Cơ sở Dữ liệu qua Code (Auto Database Initialization)**:
-   * **Trước đây**: Yêu cầu người dùng phải mở Terminal/MySQL Workbench để chạy thủ công 2 script `schema.sql` và `sample_data.sql`.
-   * **Hiện tại**: Bổ sung tiện ích [`DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java). Khi khởi chạy ứng dụng (hoặc chạy trực tiếp file này), hệ thống sẽ **tự động kết nối qua JDBC, tạo CSDL `library_db`, tạo toàn bộ 15 bảng và nạp đầy đủ dữ liệu mẫu** mà không cần gõ lệnh CLI thủ công.
-
-2. **Hiện thực trọn vẹn 4 Ca kiểm thử Nghiệp vụ (Validation Cases theo Đặc tả SRS Phase 1)**:
-   * **Test 01 (BR01, BR05 - Phân quyền mượn sách)**: Phân hóa hạn mức và thời gian mượn (`STUDENT`: tối đa 3 cuốn/14 ngày; `FACULTY`: tối đa 10 cuốn/30 ngày); chặn triệt để đối tượng ngoài (`GUEST`, `EXTERNAL_AUTHOR`) mượn sách về nhà; chặn mượn nếu đang giữ sách trễ hạn hoặc có nợ phạt chưa thanh toán.
-   * **Test 02 (BR04, BR12, BR13, FR07, FR08 - Bản quyền tài liệu số & Ghi nhật ký)**: Kiểm soát quyền tải bài báo/tạp chí số (`DIGITAL_JOURNAL`) dựa trên hạn dùng của gói bản quyền (`GRANTED_LICENSE`). Tự động ghi nhật ký truy cập vào `ACCESS_LOG` với kiến trúc Decoupled Foreign Key (tách rời khóa ngoại để tối ưu tốc độ ghi).
-   * **Test 03 (FR05, BR02 - Tự động phát sinh phạt trễ hạn)**: Tự động phát hiện khi trả sách quá hạn `due_date`, tính tiền phạt (10.000 VND / ngày trễ) và tự động tạo phiếu phạt `FINE` với trạng thái `Unpaid` và thời hạn thanh toán 14 ngày.
-   * **Test 04 (FR06, BR11 - Thanh toán trả góp tiền phạt)**: Hỗ trợ nộp phạt nhiều đợt, ghi nhận lịch sử vào `PAYMENT_TRANSACTION`, tự động tính tổng lũy kế đã trả và chuyển trạng thái: `Unpaid` $\rightarrow$ `Partially Paid` $\rightarrow$ `Completed`.
-
-3. **Mở rộng Kiến trúc Backend (MVC + Repository Pattern)**:
-   * **Tầng Repository**: Bổ sung thêm **8 Repositories mới** (nâng tổng số lên **9 Repositories**), bao phủ toàn bộ 15 bảng trong CSDL: `PersonRepository`, `UniversityMemberRepository`, `FineRepository`, `PaymentTransactionRepository`, `DigitalJournalRepository`, `LicensePackageRepository`, `GrantedLicenseRepository`, `AccessLogRepository`.
-   * **Tầng Service**: Bổ sung thêm **3 Services mới** (nâng tổng số lên **4 Services**): `MemberService`, `FineService`, `DigitalJournalService` và nâng cấp toàn diện `BorrowService`.
-   * **Tầng Controller & Main**: Cập nhật `LibraryController` tích hợp toàn bộ các luồng nghiệp vụ; nâng cấp [`Main.java`](Project/src/com/library/Main.java) thành kịch bản chạy thử tự động kiểm chứng toàn bộ 4 Validation Cases trực tiếp trên MySQL thực tế.
-
-4. **Chuẩn hóa Cấu hình Dự án & Báo cáo Tổng kết**:
-   * Sửa lỗi đường dẫn tuyệt đối local trong [`.classpath`](Project/.classpath) thành đường dẫn tương đối chuẩn (`lib/mysql-connector-j-26.7.0.jar`), giúp dự án hoạt động ngay lập tức trên mọi máy tính khi mở bằng Eclipse.
-   * Bổ sung các tài liệu báo cáo kỹ thuật chi tiết: [`PROJECT_SUMMARY.md`](PROJECT_SUMMARY.md), [`STEP1_SUMMARY.md`](STEP1_SUMMARY.md), [`STEP2_SUMMARY.md`](STEP2_SUMMARY.md).
+* **Tách bạch & Tối ưu luồng kết nối CSDL**: Tách riêng chức năng kết nối tài khoản MySQL Server và kết nối đến database cụ thể; bọc tập trung các bước kiểm tra trong khối `try-catch`, ném Exception khi gặp sự cố và yêu cầu người dùng khởi tạo thủ công nếu kết nối database trả về `null`.
+* **Hiện thực trọn vẹn 4 Validation Cases**: Hoàn thiện 4 kịch bản kiểm thử nghiệp vụ theo SRS Phase 1 (phân quyền mượn sách BR01/BR05, kiểm soát bản quyền tài liệu số BR04/BR12/BR13, tự động sinh phạt trễ hạn FR05/BR02, và thanh toán trả góp tiền phạt FR06/BR11).
+* **Mở rộng kiến trúc MVC + Repository Pattern**: Hiện thực đầy đủ 15 Model POJOs, 9 Repositories và 4 Services bao quát toàn bộ 15 bảng dữ liệu trong CSDL.
+* **Tiện ích khởi tạo CSDL & Chuẩn hóa cấu hình**: Cung cấp công cụ [`DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java) hỗ trợ nạp schema và dữ liệu mẫu; chuẩn hóa classpath tương đối cho Eclipse và cung cấp template cấu hình mẫu an toàn.
 
 ---
 
@@ -91,15 +77,13 @@ Trước khi chạy dự án, máy tính của bạn cần đảm bảo đã cà
 
 #### Bước 1: Khởi tạo Cơ sở Dữ liệu MySQL
 
-> [!IMPORTANT]
-> **ĐIỀU CHỈNH MỚI (TỰ ĐỘNG KHỞI TẠO QUA CODE)**:
-> Thay vì phải mở Terminal/Command Line để chạy lệnh thủ công như trước đây, hiện tại hệ thống **đã tự động khởi tạo khi chạy code**. Bạn có thể chọn 1 trong 2 cách:
+Trước khi khởi chạy hệ thống, cơ sở dữ liệu `library_db` cần được khởi tạo theo một trong hai cách sau:
 
-* **Cách 1: Khởi tạo Tự động bằng Code Java (Khuyên dùng)**:
-  * Sau khi cấu hình file `db.properties` (ở Bước 2), bạn chỉ cần mở file [`Project/src/com/library/util/DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java) trong Eclipse $\rightarrow$ Nhấp chuột phải chọn **Run As** $\rightarrow$ **Java Application** *(hoặc chạy trực tiếp [`Main.java`](Project/src/com/library/Main.java))*.
-  * Ứng dụng sẽ tự động kết nối qua JDBC, tạo CSDL `library_db`, chạy `schema.sql` tạo 15 bảng và chạy `sample_data.sql` nạp dữ liệu mẫu hoàn tất trong vài giây.
+* **Cách 1: Khởi tạo qua tiện ích Java (Khuyên dùng)**:
+  * Sau khi cấu hình file `db.properties` (ở Bước 2), bạn mở file [`Project/src/com/library/util/DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java) trong Eclipse $\rightarrow$ Nhấp chuột phải chọn **Run As** $\rightarrow$ **Java Application**.
+  * Tiện ích sẽ kết nối qua JDBC, tạo CSDL `library_db`, chạy `schema.sql` tạo 15 bảng và chạy `sample_data.sql` nạp dữ liệu mẫu hoàn tất trong vài giây.
 
-* **Cách 2: Khởi tạo Thủ công qua Terminal (Phương án dự phòng)**:
+* **Cách 2: Khởi tạo Thủ công qua Terminal / MySQL CLI**:
   * Nếu muốn chủ động khởi tạo bằng dòng lệnh MySQL CLI:
     ```bash
     # 1. Tạo database library_db và 15 bảng
@@ -131,7 +115,10 @@ Trước khi chạy dự án, máy tính của bạn cần đảm bảo đã cà
 #### Bước 4: Chạy kiểm thử ứng dụng
 * Mở file [`Project/src/com/library/Main.java`](Project/src/com/library/Main.java).
 * Nhấp chuột phải $\rightarrow$ Chọn **Run As** $\rightarrow$ **Java Application**.
-* Ứng dụng sẽ tự động kiểm tra CSDL (tự động khởi tạo nếu chưa có), kết nối MySQL, và thực thi trực tiếp toàn bộ **4 Validation Cases** (Test 01 đến Test 04) với kết quả chi tiết trên Console.
+* Ứng dụng sẽ thực hiện:
+  1. Kiểm tra xác thực tài khoản MySQL Server.
+  2. Kiểm tra kết nối tới database `library_db` (nếu kết nối trả về `null` sẽ in thông báo yêu cầu người dùng khởi tạo thủ công).
+  3. Khi kết nối thành công, tự động thực thi trực tiếp toàn bộ **4 Validation Cases** (Test 01 đến Test 04) với kết quả chi tiết trên Console.
 
 ---
 
@@ -208,12 +195,12 @@ Gồm **15 lớp POJO** ánh xạ 1:1 với cấu trúc bảng trong MySQL, đ�
 ### 3.3. Tầng Tiện ích & Kết nối Cơ sở Dữ liệu (`com.library.util`)
 * [`DatabaseConnection.java`](Project/src/com/library/util/DatabaseConnection.java):
   * Nạp cấu hình tự động từ file [`db.properties`](Project/src/db.properties).
-  * Đăng ký JDBC Driver `com.mysql.cj.jdbc.Driver`.
-  * Cung cấp phương thức `getConnection()` để cấp phát kết nối an toàn.
-  * Cung cấp phương thức `testConnection()` kiểm tra trạng thái kết nối tới CSDL MySQL `library_db`.
+  * Tách riêng 2 chức năng kết nối:
+    * Kết nối tài khoản MySQL Server (`getServerConnection()`, `testServerConnection()`) để kiểm tra quyền truy cập trước.
+    * Kết nối đến database `library_db` (`getConnection()`, `testDatabaseConnection()`).
+  * Cấp phát kết nối JDBC an toàn cho toàn bộ tầng Repository.
 * [`DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java):
-  * **[Nâng cấp mới]** Tự động kết nối tới MySQL Server qua JDBC, tạo database `library_db` (UTF-8 MB4), đọc và thực thi toàn bộ script [`schema.sql`](Project/schema.sql) và [`sample_data.sql`](Project/sample_data.sql).
-  * Tích hợp bộ parser SQL bóc tách comment `--` và khối lệnh phân cách dấu chấm phẩy `;`, đảm bảo nạp dữ liệu chính xác mà không cần công cụ dòng lệnh MySQL CLI.
+  * Tiện ích độc lập hỗ trợ kết nối qua JDBC để tạo CSDL `library_db` (UTF-8 MB4), nạp và thực thi các script [`schema.sql`](Project/schema.sql) và [`sample_data.sql`](Project/sample_data.sql) khi cần khởi tạo thủ công.
 * [`db.properties.example`](Project/src/db.properties.example): File cấu hình mẫu để các thành viên thiết lập tài khoản MySQL cá nhân mà không sợ lộ mật khẩu lên Git.
 
 ---
@@ -266,7 +253,9 @@ Hệ thống hiện thực đầy đủ **4 lớp Service** xử lý logic nghi�
 ### 3.7. Chương trình Chạy Kiểm thử (`com.library.Main`)
 * [`Main.java`](Project/src/com/library/Main.java):
   * Điểm chạy chính (Entry Point) của ứng dụng.
-  * Tự động kiểm tra kết nối tới MySQL và tự động khởi tạo CSDL qua `DatabaseInitializer` nếu CSDL chưa tồn tại.
+  * Bọc 2 bước kiểm tra kết nối (tài khoản MySQL Server & database `library_db`) trong khối `try-catch` tập trung:
+    * Ném `Exception` khi gặp sự cố kết nối tài khoản hoặc lỗi JDBC.
+    * In thông báo yêu cầu người dùng khởi tạo thủ công nếu kết nối database trả về `null`.
   * Khởi tạo toàn bộ Repositories, Services và Controller.
   * Thực thi kịch bản kiểm thử toàn diện cả **4 Validation Cases** trực tiếp trên cơ sở dữ liệu thật và in log kết quả trực quan trên Console.
 
