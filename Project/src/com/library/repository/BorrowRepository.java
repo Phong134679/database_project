@@ -212,6 +212,48 @@ public class BorrowRepository {
         }
     }
 
+    /**
+     * Counts how many books a member is currently borrowing (return_date IS NULL).
+     * Used to enforce borrow quota limits (BR05).
+     */
+    public int countActiveBorrowsByMember(int memberPersonId) {
+        String sql = "SELECT COUNT(*) AS active_count FROM BORROW WHERE member_person_id = ? AND return_date IS NULL";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setInt(1, memberPersonId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("active_count");
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("[BorrowRepository] Error counting active borrows: " + e.getMessage());
+        }
+        return 0;
+    }
+
+    /**
+     * Checks if a member currently has any overdue borrows not yet returned.
+     */
+    public boolean hasOverdueBorrows(int memberPersonId) {
+        String sql = "SELECT COUNT(*) AS overdue_count FROM BORROW " +
+                     "WHERE member_person_id = ? AND return_date IS NULL AND due_date < CURRENT_DATE()";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setInt(1, memberPersonId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("overdue_count") > 0;
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("[BorrowRepository] Error checking overdue borrows for member: " + e.getMessage());
+        }
+        return false;
+    }
+
     private Borrow mapRowToBorrow(ResultSet rs) throws SQLException {
         Date borrowDateSql = rs.getDate("borrow_date");
         Date dueDateSql = rs.getDate("due_date");

@@ -1,49 +1,83 @@
 package com.library.service;
 
 import com.library.model.Borrow;
+import com.library.model.Fine;
 import com.library.repository.BorrowRepository;
+import com.library.repository.FineRepository;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
  * Service class implementing business logic operations for borrow transactions.
- * Interacts with MySQL via BorrowRepository.
+ * Interacts with MySQL via BorrowRepository, FineRepository, and MemberService.
+ * Enforces Test 01 (BR01), BR05, BR10, and Test 03 (FR05).
  */
 public class BorrowService {
 
     private static final double DAILY_PENALTY_RATE = 10000.0; // 10,000 VND per day overdue
-    private static final int DEFAULT_LOAN_DAYS = 14;
 
     private BorrowRepository borrowRepository;
+    private FineRepository fineRepository;
+    private MemberService memberService;
 
     public BorrowService() {
         this.borrowRepository = new BorrowRepository();
+        this.fineRepository = new FineRepository();
+        this.memberService = new MemberService();
     }
 
     public BorrowService(BorrowRepository borrowRepository) {
         this.borrowRepository = borrowRepository;
+        this.fineRepository = new FineRepository();
+        this.memberService = new MemberService();
+    }
+
+    public BorrowService(BorrowRepository borrowRepository, FineRepository fineRepository) {
+        this.borrowRepository = borrowRepository;
+        this.fineRepository = fineRepository;
+        this.memberService = new MemberService();
+    }
+
+    public BorrowService(BorrowRepository borrowRepository, FineRepository fineRepository, MemberService memberService) {
+        this.borrowRepository = borrowRepository;
+        this.fineRepository = fineRepository;
+        this.memberService = memberService;
     }
 
     /**
      * Processes a new book borrowing transaction.
-     * Verifies physical book copy availability before recording borrow in MySQL.
+     * Enforces Test 01 (BR01: external user rejection), BR05 (role-based quotas and durations),
+     * and BR10 (physical book copy tracking).
      */
     public boolean processNewBorrow(int memberId, int copyId) {
+        // 1. Kiểm tra tính hợp lệ của người mượn (Test 01, BR01, BR05)
+        if (!memberService.isEligibleToBorrow(memberId)) {
+            System.err.println("[BorrowService] Borrow request rejected: Member " + memberId + " is not eligible to borrow.");
+            return false;
+        }
+
+        // 2. Kiểm tra tình trạng bản sao sách (BR10)
         if (!borrowRepository.isCopyAvailable(copyId)) {
             System.err.println("[BorrowService] Copy ID " + copyId + " is not available for borrowing.");
             return false;
         }
 
+        // 3. Phân định thời hạn mượn theo vai trò thành viên (BR05)
+        int loanDays = memberService.getLoanDurationDays(memberId);
         LocalDate today = LocalDate.now();
-        LocalDate dueDate = today.plusDays(DEFAULT_LOAN_DAYS);
+        LocalDate dueDate = today.plusDays(loanDays);
 
         Borrow borrow = new Borrow(0, memberId, copyId, today, dueDate, null);
         borrowRepository.insertBorrow(borrow);
 
         if (borrow.getBorrowId() > 0) {
             borrowRepository.updateCopyAvailability(copyId, "Borrowed");
+            System.out.println("[BorrowService] SUCCESS: Borrow ID " + borrow.getBorrowId() +
+                    " created for Member " + memberId + ", Copy " + copyId +
+                    " (Loan Duration: " + loanDays + " days, Due Date: " + dueDate + ")");
             return true;
         }
 
@@ -51,9 +85,17 @@ public class BorrowService {
     }
 
     /**
-     * Processes book return, updates return date and resets copy availability.
+     * Processes book return using the current date as returnDate.
      */
     public boolean returnBook(int borrowId) {
+        return returnBook(borrowId, LocalDate.now());
+    }
+
+    /**
+     * Processes book return with a specified return date.
+     * Automatically generates a FINE record if returned past due_date (Validation Case Test 03 & FR05).
+     */
+    public boolean returnBook(int borrowId, LocalDate returnDate) {
         Borrow borrow = borrowRepository.findById(borrowId);
         if (borrow == null) {
             System.err.println("[BorrowService] Borrow record not found for ID: " + borrowId);
@@ -65,10 +107,28 @@ public class BorrowService {
             return false;
         }
 
-        LocalDate returnDate = LocalDate.now();
-        borrow.setReturnDate(returnDate);
+        LocalDate actualReturnDate = returnDate != null ? returnDate : LocalDate.now();
+        borrow.setReturnDate(actualReturnDate);
         borrowRepository.updateBorrow(borrow);
         borrowRepository.updateCopyAvailability(borrow.getCopyId(), "Available");
+
+        // Test 03 & FR05: Tự động phát sinh phiếu phạt khi trả sách quá hạn
+        if (borrow.getDueDate() != null && actualReturnDate.isAfter(borrow.getDueDate())) {
+            long daysLate = ChronoUnit.DAYS.between(borrow.getDueDate(), actualReturnDate);
+            BigDecimal penaltyAmount = BigDecimal.valueOf(daysLate * DAILY_PENALTY_RATE);
+
+            // Kiểm tra xem đã có phiếu phạt cho lượt mượn này chưa (tránh trùng lặp)
+            Fine existingFine = fineRepository.findByBorrowId(borrowId);
+            if (existingFine == null) {
+                LocalDate fineDueDate = actualReturnDate.plusDays(14); // Hạn thanh toán phạt 14 ngày
+                Fine newFine = new Fine(0, borrowId, penaltyAmount, "Unpaid", fineDueDate);
+                fineRepository.insertFine(newFine);
+                System.out.println("[BorrowService] OVERDUE DETECTED (" + daysLate + " days late). " +
+                        "Generated Fine ID: " + newFine.getFineId() + " (Amount: " +
+                        String.format("%,.0f", penaltyAmount.doubleValue()) + " VND, Due Date: " + fineDueDate + ")");
+            }
+        }
+
         return true;
     }
 
@@ -110,5 +170,21 @@ public class BorrowService {
 
     public void setBorrowRepository(BorrowRepository borrowRepository) {
         this.borrowRepository = borrowRepository;
+    }
+
+    public FineRepository getFineRepository() {
+        return fineRepository;
+    }
+
+    public void setFineRepository(FineRepository fineRepository) {
+        this.fineRepository = fineRepository;
+    }
+
+    public MemberService getMemberService() {
+        return memberService;
+    }
+
+    public void setMemberService(MemberService memberService) {
+        this.memberService = memberService;
     }
 }
