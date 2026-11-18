@@ -1,5 +1,6 @@
 package com.library.repository;
 
+import com.library.exception.DatabaseException;
 import com.library.model.Person;
 import com.library.util.DatabaseConnection;
 
@@ -41,7 +42,7 @@ public class PersonRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[PersonRepository] Error inserting person: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi thêm mới người dùng (insertPerson): " + e.getMessage(), e);
         }
     }
 
@@ -61,7 +62,7 @@ public class PersonRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[PersonRepository] Error finding person " + personId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu người dùng ID " + personId + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -82,7 +83,7 @@ public class PersonRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[PersonRepository] Error finding person by SSN " + ssn + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu người dùng theo SSN " + ssn + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -102,7 +103,7 @@ public class PersonRepository {
                 list.add(mapRowToPerson(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[PersonRepository] Error fetching all persons: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi truy xuất toàn bộ danh sách người dùng: " + e.getMessage(), e);
         }
         return list;
     }

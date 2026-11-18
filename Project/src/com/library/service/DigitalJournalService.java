@@ -9,6 +9,8 @@ import com.library.repository.DigitalJournalRepository;
 import com.library.repository.GrantedLicenseRepository;
 import com.library.repository.LicensePackageRepository;
 import com.library.repository.PersonRepository;
+import com.library.validation.DataValidator;
+import com.library.validation.LicenseValidator;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -53,17 +55,17 @@ public class DigitalJournalService {
      * @param journalResourceId Target digital resource.
      * @param ipAddress IP address of the requesting client.
      * @param accessDate Date of access request.
-     * @return true if access granted (valid unexpired license), false if blocked.
+     * @return true if access granted (valid unexpired license), throws LicenseExpiredException if blocked.
      */
     public boolean accessDigitalJournal(int personId, int journalResourceId, String ipAddress, LocalDate accessDate) {
+        DataValidator.validatePositiveId(personId, "Person ID");
+        DataValidator.validatePositiveId(journalResourceId, "Journal Resource ID");
+
         LocalDate checkDate = accessDate != null ? accessDate : LocalDate.now();
 
         // 1. Kiểm tra tài nguyên số có tồn tại không
         DigitalJournal journal = journalRepository.findById(journalResourceId);
-        if (journal == null) {
-            System.err.println("[DigitalJournalService] Digital journal ID " + journalResourceId + " not found.");
-            return false;
-        }
+        LicenseValidator.validateJournalExists(journal, journalResourceId);
 
         // 2. Kiểm tra thông tin người dùng
         Person person = personRepository.findById(personId);
@@ -83,7 +85,7 @@ public class DigitalJournalService {
         );
         accessLogRepository.insertLog(log);
 
-        // 5. Trả kết quả theo quy định Test 02
+        // 5. Trả kết quả theo quy định Test 02: Nếu không có bản quyền -> ném LicenseExpiredException
         if (hasActiveLicense) {
             System.out.println("[DigitalJournalService] ACCESS GRANTED: User [" + userName +
                     "] holds valid license for journal: \"" + journal.getTitle() + "\" (DOI: " + journal.getDoi() + ")");
@@ -93,6 +95,7 @@ public class DigitalJournalService {
         } else {
             System.out.println("[DigitalJournalService] ACCESS BLOCKED: User [" + userName +
                     "] does NOT have an active license package for journal: \"" + journal.getTitle() + "\" on " + checkDate);
+            LicenseValidator.validateActiveLicense(false, userName, journal.getTitle(), checkDate);
             return false;
         }
     }
@@ -108,10 +111,9 @@ public class DigitalJournalService {
      * Grants a license package to an individual user.
      */
     public boolean grantLicenseToUser(int personId, int licenseId, LocalDate validFrom, LocalDate validTo) {
-        if (validFrom == null || validTo == null || validFrom.isAfter(validTo)) {
-            System.err.println("[DigitalJournalService] Invalid license validity date range.");
-            return false;
-        }
+        DataValidator.validatePositiveId(personId, "Person ID");
+        DataValidator.validatePositiveId(licenseId, "License ID");
+        LicenseValidator.validateLicenseGrant(validFrom, validTo);
 
         GrantedLicense grant = new GrantedLicense(0, personId, licenseId, validFrom, validTo);
         grantedLicenseRepository.insertGrant(grant);
@@ -122,7 +124,10 @@ public class DigitalJournalService {
      * Retrieves details of a digital journal.
      */
     public DigitalJournal getJournalDetails(int journalResourceId) {
-        return journalRepository.findById(journalResourceId);
+        DataValidator.validatePositiveId(journalResourceId, "Journal Resource ID");
+        DigitalJournal journal = journalRepository.findById(journalResourceId);
+        LicenseValidator.validateJournalExists(journal, journalResourceId);
+        return journal;
     }
 
     /**

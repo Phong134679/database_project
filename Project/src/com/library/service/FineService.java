@@ -4,6 +4,8 @@ import com.library.model.Fine;
 import com.library.model.PaymentTransaction;
 import com.library.repository.FineRepository;
 import com.library.repository.PaymentTransactionRepository;
+import com.library.validation.DataValidator;
+import com.library.validation.FineValidator;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -33,10 +35,8 @@ public class FineService {
      * Creates and records a new fine in the system (e.g. triggered by overdue returns or damage).
      */
     public Fine createFine(int borrowId, BigDecimal fineAmount, int daysToPay) {
-        if (fineAmount == null || fineAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            System.err.println("[FineService] Fine amount must be greater than 0.");
-            return null;
-        }
+        DataValidator.validatePositiveId(borrowId, "Borrow ID");
+        DataValidator.validatePositiveAmount(fineAmount, "Số tiền phạt (Fine Amount)");
 
         LocalDate dueDate = LocalDate.now().plusDays(daysToPay > 0 ? daysToPay : 14);
         Fine fine = new Fine(0, borrowId, fineAmount, "Unpaid", dueDate);
@@ -48,23 +48,14 @@ public class FineService {
      * Executes a payment for an outstanding fine (Validation Case Test 04 & BR11).
      * Supports installment payments and automatically transitions status
      * from 'Unpaid' -> 'Partially Paid' -> 'Completed'.
+     * Throws specific BusinessException/ValidationException on failure, returns true on success.
      */
     public boolean payFine(int fineId, BigDecimal amountPaid, String paymentMethod) {
-        if (amountPaid == null || amountPaid.compareTo(BigDecimal.ZERO) <= 0) {
-            System.err.println("[FineService] Payment amount must be greater than 0.");
-            return false;
-        }
+        DataValidator.validatePositiveId(fineId, "Fine ID");
+        DataValidator.validatePositiveAmount(amountPaid, "Số tiền thanh toán");
 
         Fine fine = fineRepository.findById(fineId);
-        if (fine == null) {
-            System.err.println("[FineService] Fine record not found for ID: " + fineId);
-            return false;
-        }
-
-        if ("Completed".equalsIgnoreCase(fine.getPaymentStatus())) {
-            System.out.println("[FineService] Fine ID " + fineId + " is already fully settled.");
-            return false;
-        }
+        FineValidator.validatePaymentEligibility(fine, amountPaid, fineId);
 
         BigDecimal currentPaid = paymentTransactionRepository.getTotalPaidForFine(fineId);
         BigDecimal remaining = fine.getTotalFineAmount().subtract(currentPaid);
@@ -113,10 +104,10 @@ public class FineService {
      * Calculates the remaining unpaid balance of a fine.
      */
     public BigDecimal getRemainingBalance(int fineId) {
+        DataValidator.validatePositiveId(fineId, "Fine ID");
         Fine fine = fineRepository.findById(fineId);
-        if (fine == null) {
-            return BigDecimal.ZERO;
-        }
+        FineValidator.validateFineExists(fine, fineId);
+
         BigDecimal totalPaid = paymentTransactionRepository.getTotalPaidForFine(fineId);
         BigDecimal remaining = fine.getTotalFineAmount().subtract(totalPaid);
         return remaining.compareTo(BigDecimal.ZERO) > 0 ? remaining : BigDecimal.ZERO;
@@ -126,13 +117,17 @@ public class FineService {
      * Retrieves fine details by ID.
      */
     public Fine getFineDetails(int fineId) {
-        return fineRepository.findById(fineId);
+        DataValidator.validatePositiveId(fineId, "Fine ID");
+        Fine fine = fineRepository.findById(fineId);
+        FineValidator.validateFineExists(fine, fineId);
+        return fine;
     }
 
     /**
      * Retrieves fine details associated with a borrowId.
      */
     public Fine getFineByBorrowId(int borrowId) {
+        DataValidator.validatePositiveId(borrowId, "Borrow ID");
         return fineRepository.findByBorrowId(borrowId);
     }
 

@@ -1,5 +1,6 @@
 package com.library.repository;
 
+import com.library.exception.DatabaseException;
 import com.library.model.GrantedLicense;
 import com.library.util.DatabaseConnection;
 
@@ -42,7 +43,7 @@ public class GrantedLicenseRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[GrantedLicenseRepository] Error inserting grant: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi thêm cấp phép bản quyền (insertGrant): " + e.getMessage(), e);
         }
     }
 
@@ -62,7 +63,7 @@ public class GrantedLicenseRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[GrantedLicenseRepository] Error finding grant " + grantId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu cấp phép bản quyền ID " + grantId + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -84,7 +85,7 @@ public class GrantedLicenseRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[GrantedLicenseRepository] Error finding grants for person " + personId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu cấp phép bản quyền của người dùng " + personId + ": " + e.getMessage(), e);
         }
         return list;
     }
@@ -116,7 +117,7 @@ public class GrantedLicenseRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[GrantedLicenseRepository] Error checking active license: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi kiểm tra tính hợp lệ của bản quyền tài liệu " + journalResourceId + " cho người dùng " + personId + ": " + e.getMessage(), e);
         }
         return false;
     }
@@ -135,7 +136,7 @@ public class GrantedLicenseRepository {
                 list.add(mapRowToGrant(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[GrantedLicenseRepository] Error fetching all grants: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi truy xuất toàn bộ danh mục cấp phép: " + e.getMessage(), e);
         }
         return list;
     }

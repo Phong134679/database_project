@@ -7,10 +7,13 @@ Dự án được xây dựng theo mô hình kiến trúc **MVC (Model - View - 
 
 ## Những Điểm Mới & Cập nhật Nâng cấp Dự án (Changelog & Upgrades)
 
-So với phiên bản khung cơ bản ban đầu, dự án đã được nâng cấp và hoàn thiện toàn diện với các điểm chính:
+So với phiên bản khung cơ bản ban đầu, dự án đã được nâng cấp và hoàn thiện toàn diện với các bổ sung trọng tâm:
 
-* **Tách bạch & Tối ưu luồng kết nối CSDL**: Tách riêng chức năng kết nối tài khoản MySQL Server và kết nối đến database cụ thể; bọc tập trung các bước kiểm tra trong khối `try-catch`, ném Exception khi gặp sự cố và yêu cầu người dùng khởi tạo thủ công nếu kết nối database trả về `null`.
-* **Hiện thực trọn vẹn 4 Validation Cases**: Hoàn thiện 4 kịch bản kiểm thử nghiệp vụ theo SRS Phase 1 (phân quyền mượn sách BR01/BR05, kiểm soát bản quyền tài liệu số BR04/BR12/BR13, tự động sinh phạt trễ hạn FR05/BR02, và thanh toán trả góp tiền phạt FR06/BR11).
+* **Tách bạch & Tối ưu luồng kết nối CSDL**: Tách riêng chức năng xác thực tài khoản MySQL Server và kết nối đến database cụ thể; bọc tập trung trong khối `try-catch`, tự động ném Exception khi gặp lỗi kết nối và yêu cầu người dùng khởi tạo thủ công nếu database trả về `null`.
+* **Bổ sung Modun Validation Chuyên biệt (`com.library.validation`)**: Phân tách toàn bộ logic kiểm tra dữ liệu và ràng buộc nghiệp vụ ra khỏi Service (gồm `DataValidator`, `MemberValidator`, `BorrowValidator`, `FineValidator`, `LicenseValidator`).
+* **Bổ sung Modun Exception Chuẩn hóa (`com.library.exception`)**: Xây dựng cây ngoại lệ kế thừa `RuntimeException`, trang bị mã lỗi nghiệp vụ riêng (`errorCode`) cho từng quy chế (BR01, BR02, BR04, BR05, BR10, BR11); bọc `SQLException` thành `DatabaseException` ném lên tầng Service.
+* **Bổ sung Bộ Kiểm thử Đơn vị (`com.library.test`)**: Cung cấp bộ test độc lập [`ValidationAndExceptionTest.java`](Project/src/com/library/test/ValidationAndExceptionTest.java) chạy 13 test cases tự động kiểm chứng toàn bộ ngoại lệ mà không phụ thuộc CSDL live.
+* **Hiện thực trọn vẹn 4 Validation Cases**: Hoàn thành 4 kịch bản kiểm thử nghiệp vụ theo SRS Phase 1 trên MySQL thật (phân quyền mượn sách BR01/BR05, kiểm soát bản quyền tài liệu số BR04/BR12/BR13, tự động sinh phạt trễ hạn FR05/BR02, và thanh toán trả góp tiền phạt FR06/BR11).
 * **Mở rộng kiến trúc MVC + Repository Pattern**: Hiện thực đầy đủ 15 Model POJOs, 9 Repositories và 4 Services bao quát toàn bộ 15 bảng dữ liệu trong CSDL.
 * **Tiện ích khởi tạo CSDL & Chuẩn hóa cấu hình**: Cung cấp công cụ [`DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java) hỗ trợ nạp schema và dữ liệu mẫu; chuẩn hóa classpath tương đối cho Eclipse và cung cấp template cấu hình mẫu an toàn.
 
@@ -250,7 +253,34 @@ Hệ thống hiện thực đầy đủ **4 lớp Service** xử lý logic nghi�
 
 ---
 
-### 3.7. Chương trình Chạy Kiểm thử (`com.library.Main`)
+### 3.7. Tầng Ngoại lệ Hệ thống (`com.library.exception`)
+Xây dựng cây phân cấp ngoại lệ kế thừa từ `LibraryException` (Unchecked Exception):
+* **Lỗi CSDL**: [`DatabaseException.java`](Project/src/com/library/exception/DatabaseException.java) (bọc `SQLException` từ tầng Repository ném lên Service).
+* **Lỗi Dữ liệu (Validation)**: [`ValidationException.java`](Project/src/com/library/exception/ValidationException.java), [`InvalidInputException.java`](Project/src/com/library/exception/InvalidInputException.java), [`InvalidAmountException.java`](Project/src/com/library/exception/InvalidAmountException.java), [`InvalidDateRangeException.java`](Project/src/com/library/exception/InvalidDateRangeException.java).
+* **Lỗi Nghiệp vụ (Business Rules)**:
+  * [`ResourceNotFoundException.java`](Project/src/com/library/exception/ResourceNotFoundException.java): Thực thể không tồn tại.
+  * [`IneligibleMemberException.java`](Project/src/com/library/exception/IneligibleMemberException.java): Vi phạm BR01 (khách ngoài mượn sách).
+  * [`BorrowQuotaExceededException.java`](Project/src/com/library/exception/BorrowQuotaExceededException.java): Vi phạm BR05 (vượt quota mượn).
+  * [`OverdueBooksPendingException.java`](Project/src/com/library/exception/OverdueBooksPendingException.java): Vi phạm BR05 (đang giữ sách quá hạn).
+  * [`OutstandingFineException.java`](Project/src/com/library/exception/OutstandingFineException.java): Vi phạm BR05 (đang nợ tiền phạt).
+  * [`BookNotAvailableException.java`](Project/src/com/library/exception/BookNotAvailableException.java): Vi phạm BR10 (bản sao không Available).
+  * [`BookAlreadyReturnedException.java`](Project/src/com/library/exception/BookAlreadyReturnedException.java): Trả sách trùng lặp (BR02).
+  * [`FineAlreadySettledException.java`](Project/src/com/library/exception/FineAlreadySettledException.java): Nộp tiền cho phiếu phạt đã tất toán (BR11).
+  * [`LicenseExpiredException.java`](Project/src/com/library/exception/LicenseExpiredException.java): Gói bản quyền hết hạn khi đọc tài liệu số (BR04/BR12).
+
+---
+
+### 3.8. Tầng Kiểm tra Tính Hợp lệ (`com.library.validation`)
+Bóc tách toàn bộ logic kiểm tra ra khỏi tầng Service:
+* [`DataValidator.java`](Project/src/com/library/validation/DataValidator.java): Kiểm tra ID dương, chuỗi ký tự, số tiền `> 0`, dải ngày tháng hợp lệ.
+* [`MemberValidator.java`](Project/src/com/library/validation/MemberValidator.java): Kiểm tra tồn tại người dùng, vai trò (BR01), sách quá hạn, nợ phạt, quota mượn (BR05).
+* [`BorrowValidator.java`](Project/src/com/library/validation/BorrowValidator.java): Kiểm tra tình trạng bản sao sách (BR10) và điều kiện hoàn trả (BR02).
+* [`FineValidator.java`](Project/src/com/library/validation/FineValidator.java): Kiểm tra số tiền phạt, thanh toán và trạng thái phiếu phạt (BR11).
+* [`LicenseValidator.java`](Project/src/com/library/validation/LicenseValidator.java): Kiểm tra tài nguyên số và tính hiệu lực của gói bản quyền (BR04/BR12).
+
+---
+
+### 3.9. Chương trình Chạy Kiểm thử (`com.library.Main` & `ValidationAndExceptionTest`)
 * [`Main.java`](Project/src/com/library/Main.java):
   * Điểm chạy chính (Entry Point) của ứng dụng.
   * Bọc 2 bước kiểm tra kết nối (tài khoản MySQL Server & database `library_db`) trong khối `try-catch` tập trung:
@@ -258,6 +288,8 @@ Hệ thống hiện thực đầy đủ **4 lớp Service** xử lý logic nghi�
     * In thông báo yêu cầu người dùng khởi tạo thủ công nếu kết nối database trả về `null`.
   * Khởi tạo toàn bộ Repositories, Services và Controller.
   * Thực thi kịch bản kiểm thử toàn diện cả **4 Validation Cases** trực tiếp trên cơ sở dữ liệu thật và in log kết quả trực quan trên Console.
+* [`ValidationAndExceptionTest.java`](Project/src/com/library/test/ValidationAndExceptionTest.java):
+  * Bộ kiểm thử Unit Test độc lập chạy 13 kịch bản kiểm thử bao phủ toàn bộ các trường hợp ném ngoại lệ và kiểm tra hợp lệ của hệ thống.
 
 ---
 
@@ -267,9 +299,6 @@ Hệ thống hiện thực đầy đủ **4 lớp Service** xử lý logic nghi�
 database/
 ├── .gitignore                                      # Cấu hình chặn file rác, metadata và file nhạy cảm
 ├── README.md                                       # Tài liệu mô tả dự án và hướng dẫn sử dụng
-├── PROJECT_SUMMARY.md                              # Báo cáo tổng hợp toàn diện & giải thích db.properties
-├── STEP1_SUMMARY.md                                # Báo cáo chi tiết nghiệp vụ Bước 1 (Phạt & Thanh toán)
-├── STEP2_SUMMARY.md                                # Báo cáo chi tiết nghiệp vụ Bước 2 (Phân quyền & Bản quyền)
 ├── Source/                                         # Tài liệu đặc tả và thiết kế hệ thống
 │   ├── G5_phase1.pdf                               # Báo cáo đặc tả yêu cầu giai đoạn 1 (SRS Phase 1)
 │   ├── erDiagram.md                                # Bản vẽ mô hình thực thể quan hệ Mermaid ERD
@@ -290,7 +319,19 @@ database/
                 ├── Main.java                       # File chạy demo kiểm thử toàn bộ luồng & 4 Validation Cases
                 ├── controller/
                 │   └── LibraryController.java      # Tầng điều phối các luồng nghiệp vụ
-                ├── service/                        # Tầng xử lý nghiệp vụ & logic kiểm tra ràng buộc
+                ├── exception/                      # Tầng định nghĩa các ngoại lệ nghiệp vụ & CSDL
+                │   ├── LibraryException.java       # Ngoại lệ gốc (Unchecked)
+                │   ├── DatabaseException.java      # Bọc SQLException từ Repository
+                │   ├── ValidationException.java    # Ngoại lệ kiểm tra dữ liệu
+                │   ├── BusinessException.java      # Ngoại lệ vi phạm quy chế nghiệp vụ
+                │   └── ...                         # Các ngoại lệ cụ thể (BR01, BR05, BR10, BR11, BR04)
+                ├── validation/                     # Tầng kiểm tra tính hợp lệ & quy chế nghiệp vụ
+                │   ├── DataValidator.java          # Kiểm tra kiểu dữ liệu, ID, tiền, dải ngày
+                │   ├── MemberValidator.java        # Kiểm tra tư cách mượn sách (BR01, BR05)
+                │   ├── BorrowValidator.java        # Kiểm tra tình trạng sách & hoàn trả (BR10, BR02)
+                │   ├── FineValidator.java          # Kiểm tra phiếu phạt & trả góp (BR11)
+                │   └── LicenseValidator.java       # Kiểm tra quyền tài liệu số (BR04, BR12)
+                ├── service/                        # Tầng xử lý nghiệp vụ & điều phối validator
                 │   ├── BorrowService.java          # Mượn, trả sách & tính phạt trễ hạn (Test 03)
                 │   ├── FineService.java            # Xử lý trả góp tiền phạt theo đợt (Test 04)
                 │   ├── MemberService.java          # Phân quyền mượn sách theo vai trò (Test 01)
@@ -308,22 +349,24 @@ database/
                 ├── util/                           # Tầng tiện ích hệ thống
                 │   ├── DatabaseConnection.java     # Cấp phát kết nối JDBC qua db.properties
                 │   └── DatabaseInitializer.java    # Khởi tạo CSDL tự động qua JDBC
-                └── model/                          # 15 Lớp thực thể POJO ánh xạ 1:1 với CSDL
-                    ├── Person.java
-                    ├── UniversityMember.java
-                    ├── ExternalAuthor.java
-                    ├── Resource.java
-                    ├── PhysicalBook.java
-                    ├── DigitalJournal.java
-                    ├── BookCopy.java
-                    ├── LicensePackage.java
-                    ├── GrantedLicense.java
-                    ├── ResourceLicense.java
-                    ├── AuthorOf.java
-                    ├── Borrow.java
-                    ├── Fine.java
-                    ├── PaymentTransaction.java
-                    └── AccessLog.java
+                ├── model/                          # 15 Lớp thực thể POJO ánh xạ 1:1 với CSDL
+                │   ├── Person.java
+                │   ├── UniversityMember.java
+                │   ├── ExternalAuthor.java
+                │   ├── Resource.java
+                │   ├── PhysicalBook.java
+                │   ├── DigitalJournal.java
+                │   ├── BookCopy.java
+                │   ├── LicensePackage.java
+                │   ├── GrantedLicense.java
+                │   ├── ResourceLicense.java
+                │   ├── AuthorOf.java
+                │   ├── Borrow.java
+                │   ├── Fine.java
+                │   ├── PaymentTransaction.java
+                │   └── AccessLog.java
+                └── test/                           # Bộ kiểm thử đơn vị
+                    └── ValidationAndExceptionTest.java # Kiểm thử toàn diện 13 test cases cho Validation/Exception
 ```
 
 ---

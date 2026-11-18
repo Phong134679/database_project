@@ -1,5 +1,6 @@
 package com.library.repository;
 
+import com.library.exception.DatabaseException;
 import com.library.model.DigitalJournal;
 import com.library.util.DatabaseConnection;
 
@@ -35,7 +36,7 @@ public class DigitalJournalRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[DigitalJournalRepository] Error finding journal " + resourceId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu tài liệu số ID " + resourceId + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -59,7 +60,7 @@ public class DigitalJournalRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[DigitalJournalRepository] Error finding journal by DOI " + doi + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu tài liệu số theo DOI " + doi + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -82,7 +83,7 @@ public class DigitalJournalRepository {
                 list.add(mapRowToJournal(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[DigitalJournalRepository] Error fetching all journals: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi truy xuất toàn bộ danh mục tài liệu số: " + e.getMessage(), e);
         }
         return list;
     }

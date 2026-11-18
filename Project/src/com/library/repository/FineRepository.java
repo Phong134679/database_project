@@ -1,5 +1,6 @@
 package com.library.repository;
 
+import com.library.exception.DatabaseException;
 import com.library.model.Fine;
 import com.library.util.DatabaseConnection;
 
@@ -41,7 +42,7 @@ public class FineRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[FineRepository] Error inserting fine: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi thêm mới phiếu phạt (insertFine): " + e.getMessage(), e);
         }
     }
 
@@ -61,7 +62,7 @@ public class FineRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[FineRepository] Error finding fine by id " + fineId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu phiếu phạt ID " + fineId + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -82,7 +83,7 @@ public class FineRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[FineRepository] Error finding fine by borrowId " + borrowId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu phiếu phạt theo Borrow ID " + borrowId + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -102,7 +103,7 @@ public class FineRepository {
                 list.add(mapRowToFine(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[FineRepository] Error fetching all fines: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi truy xuất toàn bộ phiếu phạt: " + e.getMessage(), e);
         }
         return list;
     }
@@ -123,7 +124,7 @@ public class FineRepository {
                 list.add(mapRowToFine(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[FineRepository] Error fetching outstanding fines: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi truy xuất danh sách phạt chưa nộp: " + e.getMessage(), e);
         }
         return list;
     }
@@ -145,7 +146,7 @@ public class FineRepository {
 
             ps.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("[FineRepository] Error updating fine " + fine.getFineId() + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi cập nhật phiếu phạt ID " + fine.getFineId() + ": " + e.getMessage(), e);
         }
     }
 
@@ -162,7 +163,7 @@ public class FineRepository {
 
             ps.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("[FineRepository] Error updating payment status for fine " + fineId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi cập nhật trạng thái phiếu phạt ID " + fineId + ": " + e.getMessage(), e);
         }
     }
 
@@ -177,7 +178,7 @@ public class FineRepository {
             ps.setInt(1, fineId);
             ps.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("[FineRepository] Error deleting fine " + fineId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi xóa phiếu phạt ID " + fineId + ": " + e.getMessage(), e);
         }
     }
 
@@ -198,7 +199,7 @@ public class FineRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[FineRepository] Error checking unpaid fines for member " + memberPersonId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi kiểm tra nợ phạt của thành viên " + memberPersonId + ": " + e.getMessage(), e);
         }
         return false;
     }

@@ -1,9 +1,12 @@
 package com.library.service;
 
+import com.library.exception.InvalidDateRangeException;
 import com.library.model.Borrow;
 import com.library.model.Fine;
 import com.library.repository.BorrowRepository;
 import com.library.repository.FineRepository;
+import com.library.validation.BorrowValidator;
+import com.library.validation.DataValidator;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -51,21 +54,21 @@ public class BorrowService {
      * Processes a new book borrowing transaction.
      * Enforces Test 01 (BR01: external user rejection), BR05 (role-based quotas and durations),
      * and BR10 (physical book copy tracking).
+     * Throws specific BusinessException/ValidationException on failure, returns true on success.
      */
     public boolean processNewBorrow(int memberId, int copyId) {
-        // 1. Kiểm tra tính hợp lệ của người mượn (Test 01, BR01, BR05)
-        if (!memberService.isEligibleToBorrow(memberId)) {
-            System.err.println("[BorrowService] Borrow request rejected: Member " + memberId + " is not eligible to borrow.");
-            return false;
-        }
+        // 1. Kiểm tra tính hợp lệ của tham số ID
+        DataValidator.validatePositiveId(memberId, "Member Person ID");
+        DataValidator.validatePositiveId(copyId, "Copy ID");
 
-        // 2. Kiểm tra tình trạng bản sao sách (BR10)
-        if (!borrowRepository.isCopyAvailable(copyId)) {
-            System.err.println("[BorrowService] Copy ID " + copyId + " is not available for borrowing.");
-            return false;
-        }
+        // 2. Kiểm tra tính hợp lệ của người mượn (Test 01, BR01, BR05)
+        memberService.isEligibleToBorrow(memberId);
 
-        // 3. Phân định thời hạn mượn theo vai trò thành viên (BR05)
+        // 3. Kiểm tra tình trạng bản sao sách (BR10)
+        boolean isAvailable = borrowRepository.isCopyAvailable(copyId);
+        BorrowValidator.validateCopyAvailable(isAvailable, copyId);
+
+        // 4. Phân định thời hạn mượn theo vai trò thành viên (BR05)
         int loanDays = memberService.getLoanDurationDays(memberId);
         LocalDate today = LocalDate.now();
         LocalDate dueDate = today.plusDays(loanDays);
@@ -94,20 +97,19 @@ public class BorrowService {
     /**
      * Processes book return with a specified return date.
      * Automatically generates a FINE record if returned past due_date (Validation Case Test 03 & FR05).
+     * Throws specific BusinessException/ValidationException on failure, returns true on success.
      */
     public boolean returnBook(int borrowId, LocalDate returnDate) {
-        Borrow borrow = borrowRepository.findById(borrowId);
-        if (borrow == null) {
-            System.err.println("[BorrowService] Borrow record not found for ID: " + borrowId);
-            return false;
-        }
+        DataValidator.validatePositiveId(borrowId, "Borrow ID");
 
-        if (borrow.getReturnDate() != null) {
-            System.err.println("[BorrowService] Borrow ID " + borrowId + " was already returned on: " + borrow.getReturnDate());
-            return false;
-        }
+        Borrow borrow = borrowRepository.findById(borrowId);
+        BorrowValidator.validateReturnEligibility(borrow, borrowId);
 
         LocalDate actualReturnDate = returnDate != null ? returnDate : LocalDate.now();
+        if (borrow.getBorrowDate() != null && actualReturnDate.isBefore(borrow.getBorrowDate())) {
+            throw new InvalidDateRangeException("Ngày trả (" + actualReturnDate + ") không thể trước ngày mượn (" + borrow.getBorrowDate() + ").");
+        }
+
         borrow.setReturnDate(actualReturnDate);
         borrowRepository.updateBorrow(borrow);
         borrowRepository.updateCopyAvailability(borrow.getCopyId(), "Available");
@@ -136,8 +138,11 @@ public class BorrowService {
      * Calculates the overdue penalty amount for a borrow transaction.
      */
     public double calculateLatePenalty(int borrowId) {
+        DataValidator.validatePositiveId(borrowId, "Borrow ID");
         Borrow borrow = borrowRepository.findById(borrowId);
-        if (borrow == null || borrow.getDueDate() == null) {
+        BorrowValidator.validateBorrowExists(borrow, borrowId);
+
+        if (borrow.getDueDate() == null) {
             return 0.0;
         }
 
@@ -161,7 +166,10 @@ public class BorrowService {
      * Retrieves detailed information of a borrow transaction.
      */
     public Borrow getBorrowDetails(int borrowId) {
-        return borrowRepository.findById(borrowId);
+        DataValidator.validatePositiveId(borrowId, "Borrow ID");
+        Borrow borrow = borrowRepository.findById(borrowId);
+        BorrowValidator.validateBorrowExists(borrow, borrowId);
+        return borrow;
     }
 
     public BorrowRepository getBorrowRepository() {

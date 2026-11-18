@@ -1,11 +1,14 @@
 package com.library.service;
 
+import com.library.exception.ResourceNotFoundException;
 import com.library.model.Person;
 import com.library.model.UniversityMember;
 import com.library.repository.BorrowRepository;
 import com.library.repository.FineRepository;
 import com.library.repository.PersonRepository;
 import com.library.repository.UniversityMemberRepository;
+import com.library.validation.DataValidator;
+import com.library.validation.MemberValidator;
 
 import java.util.List;
 
@@ -15,8 +18,8 @@ import java.util.List;
  */
 public class MemberService {
 
-    public static final int STUDENT_MAX_QUOTA = 3;
-    public static final int FACULTY_MAX_QUOTA = 10;
+    public static final int STUDENT_MAX_QUOTA = MemberValidator.STUDENT_MAX_QUOTA;
+    public static final int FACULTY_MAX_QUOTA = MemberValidator.FACULTY_MAX_QUOTA;
     public static final int STUDENT_LOAN_DAYS = 14;
     public static final int FACULTY_LOAN_DAYS = 30;
 
@@ -44,52 +47,19 @@ public class MemberService {
 
     /**
      * Checks if a person is eligible to borrow physical books home (Validation Case Test 01, BR01, BR05).
-     * Rejects:
-     * 1. External guests or authors (BR01 / Test 01).
-     * 2. Members with overdue unreturned books.
-     * 3. Members with outstanding unpaid fines.
-     * 4. Members who have reached their borrow quota (BR05).
+     * Rejects by throwing specific BusinessException if invalid, returns true otherwise.
      */
     public boolean isEligibleToBorrow(int personId) {
+        DataValidator.validatePositiveId(personId, "Person ID");
+
         Person person = personRepository.findById(personId);
-        if (person == null) {
-            System.err.println("[MemberService] Person ID " + personId + " does not exist in the system.");
-            return false;
-        }
+        MemberValidator.validatePersonExists(person, personId);
 
-        // Test 01 & BR01: Chặn khách ngoài và tác giả ngoài mượn sách về nhà
-        String pType = person.getPersonType();
-        if (!"STUDENT".equalsIgnoreCase(pType) && !"FACULTY".equalsIgnoreCase(pType)) {
-            System.err.println("[MemberService] ELIGIBILITY REJECTED (Test 01 / BR01): Person [" + person.getName() +
-                    "] with role '" + pType + "' is an external user and only permitted to read on-site.");
-            return false;
-        }
-
-        // Kiểm tra xem có sách quá hạn chưa trả hay không
-        if (borrowRepository.hasOverdueBorrows(personId)) {
-            System.err.println("[MemberService] ELIGIBILITY REJECTED: Member [" + person.getName() +
-                    "] currently holds overdue books that must be returned first.");
-            return false;
-        }
-
-        // Kiểm tra xem có nợ tiền phạt chưa thanh toán hay không
-        if (fineRepository.hasUnpaidFinesByMember(personId)) {
-            System.err.println("[MemberService] ELIGIBILITY REJECTED: Member [" + person.getName() +
-                    "] has outstanding unpaid fines that must be settled.");
-            return false;
-        }
-
-        // BR05: Kiểm tra hạn mức mượn tối đa theo loại thành viên
-        boolean isFaculty = "FACULTY".equalsIgnoreCase(pType);
-        int maxQuota = isFaculty ? FACULTY_MAX_QUOTA : STUDENT_MAX_QUOTA;
+        boolean hasOverdue = borrowRepository.hasOverdueBorrows(personId);
+        boolean hasFines = fineRepository.hasUnpaidFinesByMember(personId);
         int activeBorrows = borrowRepository.countActiveBorrowsByMember(personId);
 
-        if (activeBorrows >= maxQuota) {
-            System.err.println("[MemberService] ELIGIBILITY REJECTED (BR05): Member [" + person.getName() +
-                    "] has reached their maximum borrowing quota (" + activeBorrows + "/" + maxQuota + " books).");
-            return false;
-        }
-
+        MemberValidator.validateBorrowEligibility(person, hasOverdue, hasFines, activeBorrows);
         return true;
     }
 
@@ -98,8 +68,11 @@ public class MemberService {
      * Faculty: 30 days, Students: 14 days.
      */
     public int getLoanDurationDays(int personId) {
+        DataValidator.validatePositiveId(personId, "Person ID");
         Person person = personRepository.findById(personId);
-        if (person != null && "FACULTY".equalsIgnoreCase(person.getPersonType())) {
+        MemberValidator.validatePersonExists(person, personId);
+
+        if ("FACULTY".equalsIgnoreCase(person.getPersonType())) {
             return FACULTY_LOAN_DAYS;
         }
         return STUDENT_LOAN_DAYS;
@@ -109,7 +82,12 @@ public class MemberService {
      * Retrieves member profile.
      */
     public UniversityMember getMemberProfile(int personId) {
-        return memberRepository.findByPersonId(personId);
+        DataValidator.validatePositiveId(personId, "Person ID");
+        UniversityMember member = memberRepository.findByPersonId(personId);
+        if (member == null) {
+            throw new ResourceNotFoundException("Thành viên đại học (UniversityMember)", personId);
+        }
+        return member;
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.library.repository;
 
+import com.library.exception.DatabaseException;
 import com.library.model.AccessLog;
 import com.library.util.DatabaseConnection;
 
@@ -44,7 +45,7 @@ public class AccessLogRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[AccessLogRepository] Error inserting access log: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi ghi nhật ký truy cập (insertLog): " + e.getMessage(), e);
         }
     }
 
@@ -64,7 +65,7 @@ public class AccessLogRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[AccessLogRepository] Error finding log " + logId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu nhật ký truy cập ID " + logId + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -86,7 +87,7 @@ public class AccessLogRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[AccessLogRepository] Error finding logs for person " + personId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu nhật ký của người dùng " + personId + ": " + e.getMessage(), e);
         }
         return list;
     }
@@ -108,7 +109,7 @@ public class AccessLogRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[AccessLogRepository] Error finding logs for journal " + journalResourceId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu nhật ký cho tài liệu " + journalResourceId + ": " + e.getMessage(), e);
         }
         return list;
     }
@@ -128,7 +129,7 @@ public class AccessLogRepository {
                 list.add(mapRowToLog(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[AccessLogRepository] Error fetching all logs: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi truy xuất toàn bộ danh sách nhật ký: " + e.getMessage(), e);
         }
         return list;
     }

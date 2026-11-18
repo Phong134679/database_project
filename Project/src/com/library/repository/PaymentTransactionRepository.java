@@ -1,5 +1,6 @@
 package com.library.repository;
 
+import com.library.exception.DatabaseException;
 import com.library.model.PaymentTransaction;
 import com.library.util.DatabaseConnection;
 
@@ -43,7 +44,7 @@ public class PaymentTransactionRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[PaymentTransactionRepository] Error inserting transaction: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi thêm giao dịch thanh toán (insertTransaction): " + e.getMessage(), e);
         }
     }
 
@@ -63,7 +64,7 @@ public class PaymentTransactionRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[PaymentTransactionRepository] Error finding transaction " + transactionId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu giao dịch ID " + transactionId + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -85,7 +86,7 @@ public class PaymentTransactionRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[PaymentTransactionRepository] Error finding transactions for fine " + fineId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu giao dịch cho phiếu phạt ID " + fineId + ": " + e.getMessage(), e);
         }
         return list;
     }
@@ -106,7 +107,7 @@ public class PaymentTransactionRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[PaymentTransactionRepository] Error calculating total paid for fine " + fineId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tính tổng tiền đã trả cho phiếu phạt ID " + fineId + ": " + e.getMessage(), e);
         }
         return BigDecimal.ZERO;
     }
@@ -126,7 +127,7 @@ public class PaymentTransactionRepository {
                 list.add(mapRowToTransaction(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[PaymentTransactionRepository] Error fetching all transactions: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi lấy danh sách toàn bộ giao dịch thanh toán: " + e.getMessage(), e);
         }
         return list;
     }

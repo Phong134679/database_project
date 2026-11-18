@@ -1,5 +1,6 @@
 package com.library.controller;
 
+import com.library.exception.LibraryException;
 import com.library.model.AccessLog;
 import com.library.model.Borrow;
 import com.library.model.DigitalJournal;
@@ -61,13 +62,16 @@ public class LibraryController {
      */
     public boolean handleBorrowRequest(int memberId, int copyId) {
         System.out.println("\n[LibraryController] Processing borrow request: Member " + memberId + ", Copy " + copyId);
-        boolean success = borrowService.processNewBorrow(memberId, copyId);
-        if (success) {
-            System.out.println("[LibraryController] SUCCESS: Book borrowed successfully.");
-        } else {
-            System.out.println("[LibraryController] FAILED: Unable to process borrow request.");
+        try {
+            boolean success = borrowService.processNewBorrow(memberId, copyId);
+            if (success) {
+                System.out.println("[LibraryController] SUCCESS: Book borrowed successfully.");
+            }
+            return success;
+        } catch (LibraryException e) {
+            System.err.println("[LibraryController] REJECTED: " + e);
+            return false;
         }
-        return success;
     }
 
     /**
@@ -82,18 +86,21 @@ public class LibraryController {
      */
     public boolean handleReturnRequest(int borrowId, LocalDate returnDate) {
         System.out.println("\n[LibraryController] Processing return request for Borrow ID: " + borrowId + " on date: " + returnDate);
-        boolean success = borrowService.returnBook(borrowId, returnDate);
-        if (success) {
-            System.out.println("[LibraryController] SUCCESS: Book returned successfully.");
-            Fine fine = fineService.getFineByBorrowId(borrowId);
-            if (fine != null) {
-                System.out.println("[LibraryController] NOTICE: Overdue fine created: Fine ID " + fine.getFineId() +
-                        " | Amount: " + String.format("%,.0f", fine.getTotalFineAmount().doubleValue()) + " VND | Status: " + fine.getPaymentStatus());
+        try {
+            boolean success = borrowService.returnBook(borrowId, returnDate);
+            if (success) {
+                System.out.println("[LibraryController] SUCCESS: Book returned successfully.");
+                Fine fine = fineService.getFineByBorrowId(borrowId);
+                if (fine != null) {
+                    System.out.println("[LibraryController] NOTICE: Overdue fine created: Fine ID " + fine.getFineId() +
+                            " | Amount: " + String.format("%,.0f", fine.getTotalFineAmount().doubleValue()) + " VND | Status: " + fine.getPaymentStatus());
+                }
             }
-        } else {
-            System.out.println("[LibraryController] FAILED: Could not process return.");
+            return success;
+        } catch (LibraryException e) {
+            System.err.println("[LibraryController] FAILED: " + e);
+            return false;
         }
-        return success;
     }
 
     /**
@@ -102,15 +109,18 @@ public class LibraryController {
     public boolean handleFinePayment(int fineId, BigDecimal amount, String paymentMethod) {
         System.out.println("\n[LibraryController] Processing fine payment for Fine ID: " + fineId +
                 ", Amount: " + (amount != null ? String.format("%,.0f", amount.doubleValue()) : 0) + " VND, Method: " + paymentMethod);
-        boolean success = fineService.payFine(fineId, amount, paymentMethod);
-        if (success) {
-            BigDecimal remaining = fineService.getRemainingBalance(fineId);
-            System.out.println("[LibraryController] SUCCESS: Payment recorded. Remaining balance: " +
-                    String.format("%,.0f", remaining.doubleValue()) + " VND");
-        } else {
-            System.out.println("[LibraryController] FAILED: Payment processing failed.");
+        try {
+            boolean success = fineService.payFine(fineId, amount, paymentMethod);
+            if (success) {
+                BigDecimal remaining = fineService.getRemainingBalance(fineId);
+                System.out.println("[LibraryController] SUCCESS: Payment recorded. Remaining balance: " +
+                        String.format("%,.0f", remaining.doubleValue()) + " VND");
+            }
+            return success;
+        } catch (LibraryException e) {
+            System.err.println("[LibraryController] FAILED: " + e);
+            return false;
         }
-        return success;
     }
 
     /**
@@ -119,13 +129,16 @@ public class LibraryController {
     public boolean handleAccessDigitalJournal(int personId, int journalResourceId, String ipAddress, LocalDate accessDate) {
         System.out.println("\n[LibraryController] Processing digital journal access request: Person " +
                 personId + ", Journal Resource " + journalResourceId + " on date: " + accessDate);
-        boolean granted = journalService.accessDigitalJournal(personId, journalResourceId, ipAddress, accessDate);
-        if (granted) {
-            System.out.println("[LibraryController] RESULT: Access granted. User authorized to read/download.");
-        } else {
-            System.out.println("[LibraryController] RESULT: Access denied. (Test 02: Blocked due to expired or missing license).");
+        try {
+            boolean granted = journalService.accessDigitalJournal(personId, journalResourceId, ipAddress, accessDate);
+            if (granted) {
+                System.out.println("[LibraryController] RESULT: Access granted. User authorized to read/download.");
+            }
+            return granted;
+        } catch (LibraryException e) {
+            System.err.println("[LibraryController] RESULT: Access denied. " + e);
+            return false;
         }
-        return granted;
     }
 
     /**

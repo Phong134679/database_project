@@ -1,5 +1,6 @@
 package com.library.repository;
 
+import com.library.exception.DatabaseException;
 import com.library.model.Borrow;
 import com.library.util.DatabaseConnection;
 
@@ -47,7 +48,7 @@ public class BorrowRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[BorrowRepository] Error inserting borrow: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi thêm mới phiếu mượn (insertBorrow): " + e.getMessage(), e);
         }
     }
 
@@ -67,7 +68,7 @@ public class BorrowRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[BorrowRepository] Error finding borrow by id " + borrowId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu phiếu mượn ID " + borrowId + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -88,7 +89,7 @@ public class BorrowRepository {
                 list.add(mapRowToBorrow(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[BorrowRepository] Error finding overdue borrows: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu danh sách phiếu mượn quá hạn: " + e.getMessage(), e);
         }
         return list;
     }
@@ -110,7 +111,7 @@ public class BorrowRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[BorrowRepository] Error finding borrows for member " + memberPersonId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu phiếu mượn của thành viên " + memberPersonId + ": " + e.getMessage(), e);
         }
         return list;
     }
@@ -137,7 +138,7 @@ public class BorrowRepository {
 
             ps.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("[BorrowRepository] Error updating borrow " + borrow.getBorrowId() + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi cập nhật phiếu mượn ID " + borrow.getBorrowId() + ": " + e.getMessage(), e);
         }
     }
 
@@ -152,7 +153,7 @@ public class BorrowRepository {
             ps.setInt(1, borrowId);
             ps.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("[BorrowRepository] Error deleting borrow " + borrowId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi xóa phiếu mượn ID " + borrowId + ": " + e.getMessage(), e);
         }
     }
 
@@ -171,7 +172,7 @@ public class BorrowRepository {
                 list.add(mapRowToBorrow(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[BorrowRepository] Error fetching all borrows: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi truy xuất toàn bộ danh sách phiếu mượn: " + e.getMessage(), e);
         }
         return list;
     }
@@ -191,7 +192,7 @@ public class BorrowRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[BorrowRepository] Error checking copy availability: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi kiểm tra trạng thái bản sao ID " + copyId + ": " + e.getMessage(), e);
         }
         return false;
     }
@@ -208,7 +209,7 @@ public class BorrowRepository {
             ps.setInt(2, copyId);
             ps.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("[BorrowRepository] Error updating copy status: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi cập nhật trạng thái bản sao ID " + copyId + ": " + e.getMessage(), e);
         }
     }
 
@@ -228,7 +229,7 @@ public class BorrowRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[BorrowRepository] Error counting active borrows: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi đếm số sách đang mượn của thành viên " + memberPersonId + ": " + e.getMessage(), e);
         }
         return 0;
     }
@@ -249,7 +250,7 @@ public class BorrowRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[BorrowRepository] Error checking overdue borrows for member: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi kiểm tra sách quá hạn của thành viên " + memberPersonId + ": " + e.getMessage(), e);
         }
         return false;
     }

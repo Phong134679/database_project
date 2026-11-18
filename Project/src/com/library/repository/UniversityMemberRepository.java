@@ -1,5 +1,6 @@
 package com.library.repository;
 
+import com.library.exception.DatabaseException;
 import com.library.model.UniversityMember;
 import com.library.util.DatabaseConnection;
 
@@ -33,7 +34,7 @@ public class UniversityMemberRepository {
 
             ps.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("[UniversityMemberRepository] Error inserting member: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi thêm mới thành viên (insertMember): " + e.getMessage(), e);
         }
     }
 
@@ -56,7 +57,7 @@ public class UniversityMemberRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[UniversityMemberRepository] Error finding member " + personId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu thành viên Person ID " + personId + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -80,7 +81,7 @@ public class UniversityMemberRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[UniversityMemberRepository] Error finding member code " + memberCode + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu thành viên theo mã " + memberCode + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -103,7 +104,7 @@ public class UniversityMemberRepository {
                 list.add(mapRowToMember(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[UniversityMemberRepository] Error fetching all members: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi truy xuất toàn bộ danh sách thành viên: " + e.getMessage(), e);
         }
         return list;
     }

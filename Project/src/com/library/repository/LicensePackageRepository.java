@@ -1,5 +1,6 @@
 package com.library.repository;
 
+import com.library.exception.DatabaseException;
 import com.library.model.LicensePackage;
 import com.library.util.DatabaseConnection;
 
@@ -37,7 +38,7 @@ public class LicensePackageRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[LicensePackageRepository] Error inserting package: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi thêm gói bản quyền (insertPackage): " + e.getMessage(), e);
         }
     }
 
@@ -56,7 +57,7 @@ public class LicensePackageRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[LicensePackageRepository] Error finding package " + licenseId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu gói bản quyền ID " + licenseId + ": " + e.getMessage(), e);
         }
         return null;
     }
@@ -80,7 +81,7 @@ public class LicensePackageRepository {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[LicensePackageRepository] Error finding packages for journal " + journalResourceId + ": " + e.getMessage());
+            throw new DatabaseException("Lỗi khi tra cứu gói bản quyền cho tài liệu " + journalResourceId + ": " + e.getMessage(), e);
         }
         return list;
     }
@@ -99,7 +100,7 @@ public class LicensePackageRepository {
                 list.add(mapRowToPackage(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[LicensePackageRepository] Error fetching all packages: " + e.getMessage());
+            throw new DatabaseException("Lỗi khi truy xuất toàn bộ danh mục gói bản quyền: " + e.getMessage(), e);
         }
         return list;
     }
