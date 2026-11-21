@@ -21,14 +21,12 @@ import java.util.List;
 public class PaymentTransactionRepository {
 
     /**
-     * Inserts a new PaymentTransaction record into MySQL and updates the transactionId.
+     * Inserts a new PaymentTransaction record using an active Connection (for transaction support).
      */
-    public void insertTransaction(PaymentTransaction transaction) {
+    public void insertTransaction(Connection conn, PaymentTransaction transaction) {
         String sql = "INSERT INTO PAYMENT_TRANSACTION (fine_id, amount_paid, payment_date, payment_method) " +
                      "VALUES (?, ?, ?, ?)";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-
+        try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, transaction.getFineId());
             ps.setBigDecimal(2, transaction.getAmountPaid());
             LocalDateTime pDate = transaction.getPaymentDate() != null ? transaction.getPaymentDate() : LocalDateTime.now();
@@ -45,6 +43,17 @@ public class PaymentTransactionRepository {
             }
         } catch (SQLException e) {
             throw new DatabaseException("Lỗi khi thêm giao dịch thanh toán (insertTransaction): " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Inserts a new PaymentTransaction record into MySQL and updates the transactionId.
+     */
+    public void insertTransaction(PaymentTransaction transaction) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            insertTransaction(conn, transaction);
+        } catch (SQLException e) {
+            throw new DatabaseException("Lỗi kết nối khi thêm giao dịch thanh toán: " + e.getMessage(), e);
         }
     }
 

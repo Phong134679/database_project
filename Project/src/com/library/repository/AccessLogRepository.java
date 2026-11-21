@@ -134,6 +134,41 @@ public class AccessLogRepository {
         return list;
     }
 
+    /**
+     * Retrieves all access logs with person name and journal title for UI display.
+     */
+    public List<java.util.Map<String, Object>> findAllDetailed() {
+        List<java.util.Map<String, Object>> list = new ArrayList<>();
+        String sql = "SELECT l.log_id, l.person_id, p.name AS person_name, " +
+                     "       l.journal_resource_id, r.title AS journal_title, " +
+                     "       l.access_timestamp, l.ip_address, l.download_success " +
+                     "FROM ACCESS_LOG l " +
+                     "LEFT JOIN PERSON p ON l.person_id = p.person_id " +
+                     "LEFT JOIN RESOURCE r ON l.journal_resource_id = r.resource_id " +
+                     "ORDER BY l.access_timestamp DESC";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+                map.put("logId", rs.getLong("log_id"));
+                map.put("personId", rs.getInt("person_id"));
+                map.put("personName", rs.getString("person_name"));
+                map.put("journalResourceId", rs.getInt("journal_resource_id"));
+                map.put("journalTitle", rs.getString("journal_title"));
+                Timestamp ts = rs.getTimestamp("access_timestamp");
+                map.put("accessTimestamp", ts != null ? ts.toLocalDateTime().toString() : null);
+                map.put("ipAddress", rs.getString("ip_address"));
+                map.put("downloadSuccess", rs.getBoolean("download_success"));
+                list.add(map);
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Lỗi khi truy xuất nhật ký truy cập chi tiết: " + e.getMessage(), e);
+        }
+        return list;
+    }
+
     private AccessLog mapRowToLog(ResultSet rs) throws SQLException {
         Timestamp ts = rs.getTimestamp("access_timestamp");
         return new AccessLog(

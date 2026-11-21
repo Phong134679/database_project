@@ -66,10 +66,10 @@ INSERT INTO PHYSICAL_BOOK (resource_id, isbn, shelf_location) VALUES
 (1, '978-0078022159', 'Kệ A1-03-05'),
 (2, '978-0132350884', 'Kệ B2-12-01');
 
--- Tạp chí, bài báo điện tử
-INSERT INTO DIGITAL_JOURNAL (resource_id, doi, url, file_size, format) VALUES
-(3, '10.1109/TPAMI.2025.1001', 'https://dl.library.edu/journals/deep-learning-2025.pdf', 4096, 'PDF'),
-(4, '10.1145/3456789.3456790', 'https://dl.library.edu/journals/acm-distributed-tx.pdf', 2048, 'PDF');
+-- Tạp chí, bài báo điện tử (Journal 3: Cần License thương mại; Journal 4: Công khai Open Access cho khách ngoài)
+INSERT INTO DIGITAL_JOURNAL (resource_id, doi, url, file_size, format, is_public) VALUES
+(3, '10.1109/TPAMI.2025.1001', 'https://dl.library.edu/journals/deep-learning-2025.pdf', 4096, 'PDF', FALSE),
+(4, '10.1145/3456789.3456790', 'https://dl.library.edu/journals/acm-distributed-tx.pdf', 2048, 'PDF', TRUE);
 
 -- =============================================================================
 -- 5. INSERT BOOK_COPY (Bản sao vật lý của sách)

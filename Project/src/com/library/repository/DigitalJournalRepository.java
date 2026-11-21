@@ -22,13 +22,34 @@ public class DigitalJournalRepository {
      */
     public DigitalJournal findById(int resourceId) {
         String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "       dj.doi, dj.url, dj.file_size, dj.format " +
+                     "       dj.doi, dj.url, dj.file_size, dj.format, dj.is_public " +
                      "FROM DIGITAL_JOURNAL dj " +
                      "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
                      "WHERE dj.resource_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
+            ps.setInt(1, resourceId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return mapRowToJournal(rs);
+                }
+            }
+        } catch (SQLException e) {
+            // Fallback query if is_public column not yet migrated
+            return findByIdLegacy(resourceId);
+        }
+        return null;
+    }
+
+    private DigitalJournal findByIdLegacy(int resourceId) {
+        String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
+                     "       dj.doi, dj.url, dj.file_size, dj.format " +
+                     "FROM DIGITAL_JOURNAL dj " +
+                     "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
+                     "WHERE dj.resource_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, resourceId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -46,7 +67,7 @@ public class DigitalJournalRepository {
      */
     public DigitalJournal findByDoi(String doi) {
         String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "       dj.doi, dj.url, dj.file_size, dj.format " +
+                     "       dj.doi, dj.url, dj.file_size, dj.format, dj.is_public " +
                      "FROM DIGITAL_JOURNAL dj " +
                      "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
                      "WHERE dj.doi = ?";
@@ -71,6 +92,27 @@ public class DigitalJournalRepository {
     public List<DigitalJournal> findAll() {
         List<DigitalJournal> list = new ArrayList<>();
         String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
+                     "       dj.doi, dj.url, dj.file_size, dj.format, dj.is_public " +
+                     "FROM DIGITAL_JOURNAL dj " +
+                     "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
+                     "ORDER BY r.resource_id ASC";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                list.add(mapRowToJournal(rs));
+            }
+        } catch (SQLException e) {
+            // Fallback if is_public column not present
+            return findAllLegacy();
+        }
+        return list;
+    }
+
+    private List<DigitalJournal> findAllLegacy() {
+        List<DigitalJournal> list = new ArrayList<>();
+        String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
                      "       dj.doi, dj.url, dj.file_size, dj.format " +
                      "FROM DIGITAL_JOURNAL dj " +
                      "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
@@ -90,6 +132,13 @@ public class DigitalJournalRepository {
 
     private DigitalJournal mapRowToJournal(ResultSet rs) throws SQLException {
         Date pDate = rs.getDate("publish_date");
+        boolean isPublic = false;
+        try {
+            isPublic = rs.getBoolean("is_public");
+        } catch (SQLException ignored) {
+            // fallback if column not in result set
+        }
+
         return new DigitalJournal(
                 rs.getInt("resource_id"),
                 rs.getString("title"),
@@ -99,7 +148,8 @@ public class DigitalJournalRepository {
                 rs.getString("doi"),
                 rs.getString("url"),
                 rs.getInt("file_size"),
-                rs.getString("format")
+                rs.getString("format"),
+                isPublic
         );
     }
 }

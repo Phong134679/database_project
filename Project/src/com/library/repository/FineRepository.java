@@ -20,14 +20,12 @@ import java.util.List;
 public class FineRepository {
 
     /**
-     * Inserts a new Fine record into MySQL and updates the fine's fineId.
+     * Inserts a new Fine record using an active Connection (for transaction support).
      */
-    public void insertFine(Fine fine) {
+    public void insertFine(Connection conn, Fine fine) {
         String sql = "INSERT INTO FINE (borrow_id, total_fine_amount, payment_status, due_date) " +
                      "VALUES (?, ?, ?, ?)";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-
+        try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, fine.getBorrowId());
             ps.setBigDecimal(2, fine.getTotalFineAmount());
             ps.setString(3, fine.getPaymentStatus() != null ? fine.getPaymentStatus() : "Unpaid");
@@ -43,6 +41,17 @@ public class FineRepository {
             }
         } catch (SQLException e) {
             throw new DatabaseException("Lỗi khi thêm mới phiếu phạt (insertFine): " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Inserts a new Fine record into MySQL and updates the fine's fineId.
+     */
+    public void insertFine(Fine fine) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            insertFine(conn, fine);
+        } catch (SQLException e) {
+            throw new DatabaseException("Lỗi kết nối khi thêm mới phiếu phạt: " + e.getMessage(), e);
         }
     }
 
@@ -68,14 +77,12 @@ public class FineRepository {
     }
 
     /**
-     * Finds a Fine record by its associated borrowId.
+     * Finds a Fine record by its associated borrowId using an active Connection.
      */
-    public Fine findByBorrowId(int borrowId) {
+    public Fine findByBorrowId(Connection conn, int borrowId) {
         String sql = "SELECT fine_id, borrow_id, total_fine_amount, payment_status, due_date " +
                      "FROM FINE WHERE borrow_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, borrowId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -86,6 +93,17 @@ public class FineRepository {
             throw new DatabaseException("Lỗi khi tra cứu phiếu phạt theo Borrow ID " + borrowId + ": " + e.getMessage(), e);
         }
         return null;
+    }
+
+    /**
+     * Finds a Fine record by its associated borrowId.
+     */
+    public Fine findByBorrowId(int borrowId) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            return findByBorrowId(conn, borrowId);
+        } catch (SQLException e) {
+            throw new DatabaseException("Lỗi kết nối khi tra cứu phiếu phạt: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -151,20 +169,76 @@ public class FineRepository {
     }
 
     /**
-     * Updates only the payment status of a Fine.
+     * Updates only the payment status of a Fine using an active Connection.
      */
-    public void updatePaymentStatus(int fineId, String paymentStatus) {
+    public void updatePaymentStatus(Connection conn, int fineId, String paymentStatus) {
         String sql = "UPDATE FINE SET payment_status = ? WHERE fine_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, paymentStatus);
             ps.setInt(2, fineId);
-
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new DatabaseException("Lỗi khi cập nhật trạng thái phiếu phạt ID " + fineId + ": " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Updates only the payment status of a Fine.
+     */
+    public void updatePaymentStatus(int fineId, String paymentStatus) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            updatePaymentStatus(conn, fineId, paymentStatus);
+        } catch (SQLException e) {
+            throw new DatabaseException("Lỗi kết nối khi cập nhật trạng thái phiếu phạt: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Retrieves all fines with detailed member, borrow, and payment calculation for UI display.
+     */
+    public List<java.util.Map<String, Object>> findAllFinesDetailed() {
+        List<java.util.Map<String, Object>> list = new ArrayList<>();
+        String sql = "SELECT f.fine_id, f.borrow_id, f.total_fine_amount, f.payment_status, f.due_date, " +
+                     "       b.member_person_id, p.name AS member_name, r.title AS book_title, " +
+                     "       COALESCE(SUM(pt.amount_paid), 0.00) AS total_paid " +
+                     "FROM FINE f " +
+                     "JOIN BORROW b ON f.borrow_id = b.borrow_id " +
+                     "JOIN PERSON p ON b.member_person_id = p.person_id " +
+                     "JOIN BOOK_COPY bc ON b.copy_id = bc.copy_id " +
+                     "JOIN RESOURCE r ON bc.resource_id = r.resource_id " +
+                     "LEFT JOIN PAYMENT_TRANSACTION pt ON f.fine_id = pt.fine_id " +
+                     "GROUP BY f.fine_id, f.borrow_id, f.total_fine_amount, f.payment_status, f.due_date, " +
+                     "         b.member_person_id, p.name, r.title " +
+                     "ORDER BY f.fine_id DESC";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+                int fineId = rs.getInt("fine_id");
+                map.put("fineId", fineId);
+                map.put("borrowId", rs.getInt("borrow_id"));
+                map.put("memberPersonId", rs.getInt("member_person_id"));
+                map.put("memberName", rs.getString("member_name"));
+                map.put("bookTitle", rs.getString("book_title"));
+                BigDecimal totalAmount = rs.getBigDecimal("total_fine_amount");
+                BigDecimal paidAmount = rs.getBigDecimal("total_paid");
+                BigDecimal remaining = totalAmount.subtract(paidAmount);
+                if (remaining.compareTo(BigDecimal.ZERO) < 0) {
+                    remaining = BigDecimal.ZERO;
+                }
+                map.put("totalFineAmount", totalAmount);
+                map.put("paidAmount", paidAmount);
+                map.put("remainingBalance", remaining);
+                map.put("paymentStatus", rs.getString("payment_status"));
+                Date dDate = rs.getDate("due_date");
+                map.put("dueDate", dDate != null ? dDate.toString() : null);
+                list.add(map);
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Lỗi khi tra cứu danh sách phiếu phạt chi tiết: " + e.getMessage(), e);
+        }
+        return list;
     }
 
     /**

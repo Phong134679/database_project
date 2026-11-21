@@ -71,8 +71,9 @@ public class DigitalJournalService {
         Person person = personRepository.findById(personId);
         String userName = person != null ? person.getName() : ("Person ID " + personId);
 
-        // 3. Kiểm tra tính hợp lệ của bản quyền (BR04, BR12)
-        boolean hasActiveLicense = grantedLicenseRepository.hasActiveLicenseForJournal(personId, journalResourceId, checkDate);
+        // 3. Kiểm tra tính hợp lệ của bản quyền (BR04, BR12) hoặc tài liệu công khai (Open Access)
+        boolean isPublic = journal.isPublic();
+        boolean hasActiveLicense = isPublic || grantedLicenseRepository.hasActiveLicenseForJournal(personId, journalResourceId, checkDate);
 
         // 4. Ghi nhận nhật ký truy cập vào ACCESS_LOG bất kể thành công hay thất bại (BR13 & FR08)
         AccessLog log = new AccessLog(
@@ -85,10 +86,11 @@ public class DigitalJournalService {
         );
         accessLogRepository.insertLog(log);
 
-        // 5. Trả kết quả theo quy định Test 02: Nếu không có bản quyền -> ném LicenseExpiredException
+        // 5. Trả kết quả: Nếu Open Access hoặc có bản quyền hợp lệ -> Cấp quyền
         if (hasActiveLicense) {
-            System.out.println("[DigitalJournalService] ACCESS GRANTED: User [" + userName +
-                    "] holds valid license for journal: \"" + journal.getTitle() + "\" (DOI: " + journal.getDoi() + ")");
+            String accessType = isPublic ? "Tài liệu công khai (Open Access)" : "Gói bản quyền hợp lệ";
+            System.out.println("[DigitalJournalService] ACCESS GRANTED (" + accessType + "): User [" + userName +
+                    "] accessed journal: \"" + journal.getTitle() + "\" (DOI: " + journal.getDoi() + ")");
             System.out.println("    -> Download URL: " + journal.getUrl() + " [Format: " + journal.getFormat() +
                     ", Size: " + journal.getFileSize() + " KB]");
             return true;
@@ -149,6 +151,13 @@ public class DigitalJournalService {
      */
     public List<AccessLog> getAllAccessLogs() {
         return accessLogRepository.findAll();
+    }
+
+    /**
+     * Retrieves all access logs with user names and journal titles for UI display.
+     */
+    public List<java.util.Map<String, Object>> getAllAccessLogsDetailed() {
+        return accessLogRepository.findAllDetailed();
     }
 
     public DigitalJournalRepository getJournalRepository() {

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hệ thống Quản lý Thư viện số & Lưu trữ mở</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Top Header -->
+  <header class="header">
+    <div class="header-title">
+      <h1>📚 Thư viện số & Lưu trữ mở</h1>
+      <p>Digital Library Management System & Open Repository (Java 11 & MySQL)</p>
+    </div>
+    <div class="header-status">
+      <span class="status-dot" id="apiStatusDot"></span>
+      <span id="apiStatusText">Đang kiểm tra kết nối...</span>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="container">
+
+    <!-- Global Alert Bar -->
+    <div id="globalAlert" class="alert alert-info" style="display: none;">
+      <span id="globalAlertMsg">Thông báo hệ thống</span>
+      <button class="alert-close" onclick="closeAlert()">&times;</button>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="tabs-nav">
+      <button class="tab-btn active" onclick="switchTab('tab-resources', this)">📖 1. Danh mục Tài nguyên</button>
+      <button class="tab-btn" onclick="switchTab('tab-borrow', this)">🔄 2. Mượn & Trả sách</button>
+      <button class="tab-btn" onclick="switchTab('tab-fines', this)">💰 3. Tiền phạt & Thanh toán</button>
+      <button class="tab-btn" onclick="switchTab('tab-digital', this)">🌐 4. Tài liệu số & Nhật ký</button>
+      <button class="tab-btn" onclick="switchTab('tab-members', this)">👥 5. Quản lý Độc giả</button>
+    </nav>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 1: DANH MỤC TÀI NGUYÊN (RESOURCES) -->
+    <!-- ==================================================================== -->
+    <section id="tab-resources" class="tab-content active">
+      <div class="card">
+        <div class="card-title">
+          <span>Danh mục Tài nguyên Thư viện (Sách in & Tạp chí số)</span>
+          <button class="btn btn-secondary btn-sm" onclick="loadResources()">🔄 Làm mới</button>
+        </div>
+
+        <div class="search-bar">
+          <input type="text" id="resourceSearch" placeholder="Tìm kiếm theo tiêu đề, chủ đề, mã ISBN hoặc DOI..." oninput="filterResources()">
+          <select id="resourceTypeFilter" onchange="filterResources()" style="padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+            <option value="ALL">Tất cả loại tài nguyên</option>
+            <option value="PHYSICAL_BOOK">Chỉ Sách in (Physical Book)</option>
+            <option value="DIGITAL_JOURNAL">Chỉ Tạp chí số (Digital Journal)</option>
+          </select>
+        </div>
+
+        <div class="table-responsive">
+          <table id="resourcesTable">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Tiêu đề tài nguyên</th>
+                <th>Phân loại</th>
+                <th>Chủ đề</th>
+                <th>Ngày xuất bản</th>
+                <th>Mã định danh (ISBN / DOI)</th>
+                <th>Thông tin kho / Tệp</th>
+                <th>Bản sao (Sẵn sàng / Tổng)</th>
+              </tr>
+            </thead>
+            <tbody id="resourcesBody">
+              <tr><td colspan="8" class="empty-state">Đang tải danh mục tài nguyên...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 2: MƯỢN & TRẢ SÁCH (CIRCULATION) -->
+    <!-- ==================================================================== -->
+    <section id="tab-borrow" class="tab-content">
+      <!-- Form tạo lượt mượn -->
+      <div class="card">
+        <div class="card-title">
+          <span>Tạo phiếu mượn sách mới (Physical Book Loan)</span>
+        </div>
+        <p class="hint" style="margin-bottom: 16px;">
+          Hệ thống tự động kiểm tra các quy chế nghiệp vụ: <strong>BR01</strong> (Chặn khách ngoài mượn về nhà), <strong>BR05</strong> (Hạn mức 3 cuốn/SV, 10 cuốn/GV; Chặn khi đang nợ sách quá hạn hoặc tiền phạt), <strong>BR10</strong> (Bản sao phải ở trạng thái Available).
+        </p>
+
+        <form id="borrowForm" onsubmit="handleBorrowSubmit(event)">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="borrowMemberSelect">Chọn Thành viên / Độc giả (*):</label>
+              <select id="borrowMemberSelect" required>
+                <option value="">-- Chọn độc giả --</option>
+              </select>
+              <span class="hint" id="borrowMemberHint"></span>
+            </div>
+
+            <div class="form-group">
+              <label for="borrowCopySelect">Chọn Bản sao sách có sẵn (*):</label>
+              <select id="borrowCopySelect" required>
+                <option value="">-- Chọn bản sao khả dụng --</option>
+              </select>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="btnSubmitBorrow">
+            📤 Xác nhận mượn sách
+          </button>
+        </form>
+      </div>
+
+      <!-- Danh sách lượt mượn -->
+      <div class="card">
+        <div class="card-title">
+          <span>Danh sách Lượt mượn sách (Bảng BORROW)</span>
+          <button class="btn btn-secondary btn-sm" onclick="loadBorrows()">🔄 Làm mới</button>
+        </div>
+
+        <div class="table-responsive">
+          <table id="borrowsTable">
+            <thead>
+              <tr>
+                <th>Borrow ID</th>
+                <th>Độc giả mượn</th>
+                <th>Vai trò</th>
+                <th>Tên sách & Bản sao</th>
+                <th>Mã vạch</th>
+                <th>Ngày mượn</th>
+                <th>Hạn trả (Due Date)</th>
+                <th>Ngày trả thực tế</th>
+                <th>Trạng thái</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="borrowsBody">
+              <tr><td colspan="10" class="empty-state">Đang tải danh sách mượn sách...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 3: TIỀN PHẠT & THANH TOÁN (FINES & PAYMENTS) -->
+    <!-- ==================================================================== -->
+    <section id="tab-fines" class="tab-content">
+      <!-- Thống kê tổng quan -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-label">Tổng số phiếu phạt</span>
+          <span class="stat-value" id="statTotalFines">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Phiếu chưa tất toán</span>
+          <span class="stat-value" id="statUnpaidFines" style="color: var(--danger);">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Tổng công nợ còn lại</span>
+          <span class="stat-value" id="statTotalDebt" style="color: var(--warning);">0 đ</span>
+        </div>
+      </div>
+
+      <!-- Bảng danh sách phiếu phạt -->
+      <div class="card">
+        <div class="card-title">
+          <span>Danh mục Phiếu phạt vi phạm (Overdue Fines & Settlements)</span>
+          <button class="btn btn-secondary btn-sm" onclick="loadFines()">🔄 Làm mới</button>
+        </div>
+
+        <div class="table-responsive">
+          <table id="finesTable">
+            <thead>
+              <tr>
+                <th>Fine ID</th>
+                <th>Lượt mượn ID</th>
+                <th>Độc giả vi phạm</th>
+                <th>Tên sách liên quan</th>
+                <th>Tổng tiền phạt</th>
+                <th>Đã nộp</th>
+                <th>Còn nợ</th>
+                <th>Trạng thái (BR11)</th>
+                <th>Hạn thanh toán</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="finesBody">
+              <tr><td colspan="10" class="empty-state">Đang tải danh sách tiền phạt...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 4: TÀI LIỆU SỐ & NHẬT KÝ (DIGITAL JOURNALS & ACCESS LOGS) -->
+    <!-- ==================================================================== -->
+    <section id="tab-digital" class="tab-content">
+      <!-- Thử nghiệm truy cập bản quyền -->
+      <div class="card">
+        <div class="card-title">
+          <span>Kiểm tra Quyền truy cập & Đọc Tạp chí số (BR04, BR12, FR08)</span>
+        </div>
+        <p class="hint" style="margin-bottom: 16px;">
+          Theo quy chế <strong>BR04 & BR12</strong>, tài liệu số có bản quyền thương mại mặc định bị khóa và yêu cầu gói bản quyền (`GRANTED_LICENSE`) còn hạn. Các tài liệu được gắn cờ <strong>Open Access (is_public = TRUE)</strong> cho phép mọi đối tượng (bao gồm cả Khách ngoài / GUEST) truy cập tự do. Mọi hành vi truy cập đều được ghi nhận vào nhật ký độc lập <strong>BR13</strong>.
+        </p>
+
+        <form id="accessJournalForm" onsubmit="handleJournalAccessSubmit(event)">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="accessPersonSelect">Độc giả yêu cầu truy cập (*):</label>
+              <select id="accessPersonSelect" required>
+                <option value="">-- Chọn độc giả --</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="accessJournalSelect">Tài liệu / Tạp chí số (*):</label>
+              <select id="accessJournalSelect" required>
+                <option value="">-- Chọn bài báo / tạp chí số --</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="accessIpInput">Địa chỉ IP Client:</label>
+              <input type="text" id="accessIpInput" value="192.168.1.100" required>
+            </div>
+
+            <div class="form-group">
+              <label for="accessDateInput">Ngày truy cập:</label>
+              <input type="date" id="accessDateInput" required>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="btnSubmitAccess">
+            🔓 Thẩm định quyền & Đọc tài liệu
+          </button>
+        </form>
+
+        <div id="accessResultBox" style="margin-top: 20px; display: none;"></div>
+      </div>
+
+      <!-- Bảng Access Log -->
+      <div class="card">
+        <div class="card-title">
+          <span>Nhật ký Truy cập Tài nguyên số (ACCESS_LOG - Ràng buộc BR13 & FR08)</span>
+          <button class="btn btn-secondary btn-sm" onclick="loadAccessLogs()">🔄 Làm mới nhật ký</button>
+        </div>
+
+        <div class="table-responsive">
+          <table id="accessLogsTable">
+            <thead>
+              <tr>
+                <th>Log ID</th>
+                <th>Thời điểm truy cập</th>
+                <th>Độc giả</th>
+                <th>Tài liệu số</th>
+                <th>Địa chỉ IP</th>
+                <th>Trạng thái (Download Success)</th>
+              </tr>
+            </thead>
+            <tbody id="accessLogsBody">
+              <tr><td colspan="6" class="empty-state">Đang tải nhật ký truy cập...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 5: QUẢN LÝ ĐỘC GIẢ (MEMBERS) -->
+    <!-- ==================================================================== -->
+    <section id="tab-members" class="tab-content">
+      <div class="card">
+        <div class="card-title">
+          <span>Danh sách Người dùng & Độc giả trong Hệ thống (PERSON & UNIVERSITY_MEMBER)</span>
+          <button class="btn btn-secondary btn-sm" onclick="loadMembers()">🔄 Làm mới</button>
+        </div>
+
+        <div class="table-responsive">
+          <table id="membersTable">
+            <thead>
+              <tr>
+                <th>Person ID</th>
+                <th>Họ và tên</th>
+                <th>Số định danh (SSN)</th>
+                <th>Phân loại</th>
+                <th>Mã SV/CB</th>
+                <th>Khoa / Viện</th>
+                <th>Ngành / Học hàm</th>
+                <th>Sách đang mượn</th>
+                <th>Nợ phạt</th>
+                <th>Tư cách mượn sách (BR01/BR05)</th>
+              </tr>
+            </thead>
+            <tbody id="membersBody">
+              <tr><td colspan="10" class="empty-state">Đang tải danh sách độc giả...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL 1: TRẢ SÁCH (RETURN BOOK) -->
+  <!-- ==================================================================== -->
+  <div class="modal-backdrop" id="returnModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Hoàn trả sách vật lý</h3>
+        <button class="alert-close" onclick="closeReturnModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="returnBookInfo" style="margin-bottom: 16px; font-weight: 600;"></p>
+        <div class="form-group">
+          <label for="returnDateInput">Chọn Ngày trả thực tế:</label>
+          <input type="date" id="returnDateInput" required>
+          <span class="hint">Nếu ngày trả vượt quá hạn trả (Due Date), hệ thống sẽ tự động phát sinh phiếu phạt 10.000 VNĐ / ngày trễ hạn (FR05).</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeReturnModal()">Hủy bỏ</button>
+        <button class="btn btn-success" id="btnConfirmReturn" onclick="confirmReturn()">Xác nhận trả sách</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL 2: THANH TOÁN TIỀN PHẠT (PAY FINE) -->
+  <!-- ==================================================================== -->
+  <div class="modal-backdrop" id="payModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Ghi nhận Thanh toán Tiền phạt (Trả góp BR11)</h3>
+        <button class="alert-close" onclick="closePayModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="payFineSummary" style="margin-bottom: 16px;"></div>
+
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label for="payAmountInput">Số tiền thanh toán đợt này (VNĐ) (*):</label>
+          <input type="number" id="payAmountInput" min="1000" step="1000" required>
+        </div>
+
+        <div class="form-group">
+          <label for="payMethodSelect">Phương thức thanh toán:</label>
+          <select id="payMethodSelect">
+            <option value="Cash">Tiền mặt tại quầy (Cash)</option>
+            <option value="Bank Transfer">Chuyển khoản ngân hàng (Bank Transfer)</option>
+            <option value="Credit Card">Thẻ thanh toán (Credit Card)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closePayModal()">Hủy bỏ</button>
+        <button class="btn btn-success" id="btnConfirmPay" onclick="confirmPay()">Ghi nhận thanh toán</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL 3: LỊCH SỬ THANH TOÁN (PAYMENT HISTORY) -->
+  <!-- ==================================================================== -->
+  <div class="modal-backdrop" id="historyModal">
+    <div class="modal" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3>Lịch sử các đợt thanh toán trả góp</h3>
+        <button class="alert-close" onclick="closeHistoryModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="historySummary" style="margin-bottom: 14px;"></div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Mã GD</th>
+                <th>Số tiền nộp</th>
+                <th>Thời điểm nộp</th>
+                <th>Hình thức</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeHistoryModal()">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

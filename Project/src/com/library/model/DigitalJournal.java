@@ -10,6 +10,7 @@ public class DigitalJournal extends Resource {
     private String url;
     private int fileSize;
     private String format;
+    private boolean isPublic;
 
     public DigitalJournal() {
         super();
@@ -17,11 +18,17 @@ public class DigitalJournal extends Resource {
 
     public DigitalJournal(int resourceId, String title, LocalDate publishDate, String topic, String resourceType,
                           String doi, String url, int fileSize, String format) {
+        this(resourceId, title, publishDate, topic, resourceType, doi, url, fileSize, format, false);
+    }
+
+    public DigitalJournal(int resourceId, String title, LocalDate publishDate, String topic, String resourceType,
+                          String doi, String url, int fileSize, String format, boolean isPublic) {
         super(resourceId, title, publishDate, topic, resourceType);
         this.doi = doi;
         this.url = url;
         this.fileSize = fileSize;
         this.format = format;
+        this.isPublic = isPublic;
     }
 
     public String getDoi() {
@@ -56,6 +63,14 @@ public class DigitalJournal extends Resource {
         this.format = format;
     }
 
+    public boolean isPublic() {
+        return isPublic;
+    }
+
+    public void setPublic(boolean aPublic) {
+        isPublic = aPublic;
+    }
+
     @Override
     public String toString() {
         return "DigitalJournal{" +
@@ -65,6 +80,7 @@ public class DigitalJournal extends Resource {
                 ", url='" + url + '\'' +
                 ", fileSize=" + fileSize +
                 ", format='" + format + '\'' +
+                ", isPublic=" + isPublic +
                 '}';
     }
 }

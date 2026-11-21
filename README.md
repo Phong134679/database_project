@@ -9,13 +9,17 @@ Dự án được xây dựng theo mô hình kiến trúc **MVC (Model - View - 
 
 So với phiên bản khung cơ bản ban đầu, dự án đã được nâng cấp và hoàn thiện toàn diện với các bổ sung trọng tâm:
 
+* **Tích hợp Web Client SPA & REST API Server thuần JDK**: Bổ sung giao diện Web trang đơn (HTML5, CSS3, Vanilla JavaScript) với 5 Tab nghiệp vụ trực quan, kết nối với backend thông qua máy chủ REST API siêu nhẹ sử dụng `com.sun.net.httpserver.HttpServer` có sẵn trong JDK 11 và thư viện `Gson 2.10.1`. Giữ trọn vẹn kiến trúc Java 11 + JDBC thuần, không phụ thuộc Spring Boot, Maven hay Gradle.
+* **Đảm bảo toàn vẹn giao dịch (ACID Transactions)**: Tái cấu trúc các Repository (`BorrowRepository`, `FineRepository`, `PaymentTransactionRepository`) và Service để dùng chung một `java.sql.Connection` khi thực thi các luồng liên bảng (Mượn sách: INSERT borrow + UPDATE copy; Trả sách: UPDATE borrow + UPDATE copy + INSERT fine; Trả góp: INSERT transaction + UPDATE fine) với `setAutoCommit(false)`, `commit()` và `rollback()`.
+* **Phân định Tài liệu số Mở (Open Access)**: Bổ sung cờ `is_public` cho bảng `DIGITAL_JOURNAL`, cho phép mọi bạn đọc kể cả khách vãng lai (`GUEST`) truy cập bài báo mở mà không bị chặn bản quyền.
+* **Tối ưu hóa CORS & Cache-Control**: Máy chủ API tự động cấu hình CORS header mở và cơ chế `Cache-Control: no-cache, no-store, must-revalidate`, ngăn ngừa lỗi cache mã nguồn cũ và hoạt động mượt mà trên mọi trình duyệt hiện đại (Brave, Chrome, Firefox, Edge).
 * **Tách bạch & Tối ưu luồng kết nối CSDL**: Tách riêng chức năng xác thực tài khoản MySQL Server và kết nối đến database cụ thể; bọc tập trung trong khối `try-catch`, tự động ném Exception khi gặp lỗi kết nối và yêu cầu người dùng khởi tạo thủ công nếu database trả về `null`.
 * **Bổ sung Modun Validation Chuyên biệt (`com.library.validation`)**: Phân tách toàn bộ logic kiểm tra dữ liệu và ràng buộc nghiệp vụ ra khỏi Service (gồm `DataValidator`, `MemberValidator`, `BorrowValidator`, `FineValidator`, `LicenseValidator`).
 * **Bổ sung Modun Exception Chuẩn hóa (`com.library.exception`)**: Xây dựng cây ngoại lệ kế thừa `RuntimeException`, trang bị mã lỗi nghiệp vụ riêng (`errorCode`) cho từng quy chế (BR01, BR02, BR04, BR05, BR10, BR11); bọc `SQLException` thành `DatabaseException` ném lên tầng Service.
 * **Bổ sung Bộ Kiểm thử Đơn vị (`com.library.test`)**: Cung cấp bộ test độc lập [`ValidationAndExceptionTest.java`](Project/src/com/library/test/ValidationAndExceptionTest.java) chạy 13 test cases tự động kiểm chứng toàn bộ ngoại lệ mà không phụ thuộc CSDL live.
 * **Hiện thực trọn vẹn 4 Validation Cases**: Hoàn thành 4 kịch bản kiểm thử nghiệp vụ theo SRS Phase 1 trên MySQL thật (phân quyền mượn sách BR01/BR05, kiểm soát bản quyền tài liệu số BR04/BR12/BR13, tự động sinh phạt trễ hạn FR05/BR02, và thanh toán trả góp tiền phạt FR06/BR11).
-* **Mở rộng kiến trúc MVC + Repository Pattern**: Hiện thực đầy đủ 15 Model POJOs, 9 Repositories và 4 Services bao quát toàn bộ 15 bảng dữ liệu trong CSDL.
-* **Tiện ích khởi tạo CSDL & Chuẩn hóa cấu hình**: Cung cấp công cụ [`DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java) hỗ trợ nạp schema và dữ liệu mẫu; chuẩn hóa classpath tương đối cho Eclipse và cung cấp template cấu hình mẫu an toàn.
+* **Mở rộng kiến trúc MVC + Repository Pattern**: Hiện thực đầy đủ 15 Model POJOs, 10 Repositories (bổ sung `ResourceRepository` truy vấn tối ưu cho Web) và 4 Services bao quát toàn bộ 15 bảng dữ liệu trong CSDL.
+* **Tiện ích khởi tạo CSDL & Script khởi chạy**: Cung cấp công cụ [`DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java), script khởi chạy tự động [`start_server.sh`](Project/start_server.sh), chuẩn hóa classpath tương đối cho Eclipse và template cấu hình mẫu an toàn.
 
 ---
 
@@ -129,28 +133,131 @@ Trước khi khởi chạy hệ thống, cơ sở dữ liệu `library_db` cần
 
 Hệ thống được tổ chức phân tầng chặt chẽ theo mô hình **MVC** kết hợp **Repository Pattern**:
 
+### 2.1. Sơ đồ Luồng Tương tác Toàn diện (Web Client ↔ Java API ↔ MySQL Server)
+Sơ đồ dưới đây mô phỏng chi tiết luồng trao đổi dữ liệu từ giao diện người dùng qua các tầng backend và lưu trữ cơ sở dữ liệu, thể hiện rõ các giao thức kết nối và cổng mạng tương ứng:
+
+```mermaid
+flowchart LR
+    subgraph Client["1. Lớp Giao diện Người dùng (Web Client)"]
+        Browser["Trình duyệt Web\n(Brave / Chrome / Firefox / Edge)\nHTML5 + CSS3 + Vanilla JavaScript\n(Single Page Application)"]
+    end
+
+    subgraph Backend["2. Lớp Máy chủ Ứng dụng (Java 11 REST API Server)"]
+        Server["JDK HttpServer: ApiServer\n(Port 8080)"]
+        Handlers["Tầng HttpHandler\n(Resources, Copies, Borrows,\nFines, Digital Journals, Members, Logs)"]
+        Services["Tầng Dịch vụ & Thẩm định\n(BorrowService, FineService,\nMemberService, DigitalJournalService)"]
+        Repos["Tầng Repository\n(10 Repositories\nShared Connection ACID Transaction)"]
+    end
+
+    subgraph Database["3. Lớp Cơ sở Dữ liệu (Database Storage)"]
+        MySQL[("MySQL Community Server\n(Database: library_db)\n15 Bảng InnoDB UTF-8 MB4")]
+    end
+
+    Browser <==>|"GIAO THỨC: HTTP/1.1 REST\nĐịnh dạng: JSON (UTF-8)\nCổng mạng: TCP Port 8080\nHeader: CORS (*), Cache-Control: no-cache"| Server
+    Server --> Handlers
+    Handlers --> Services
+    Services --> Repos
+    Repos <==>|"GIAO THỨC: MySQL Client/Server Protocol\nBộ điều khiển: com.mysql.cj.jdbc.Driver\nCổng mạng: TCP Port 3306\nĐặc tính: Quản lý giao dịch ACID"| MySQL
 ```
-                       [ LibraryController ]                  <- Tầng Điều phối Sự kiện (Controller)
-                                 │
-         ┌───────────────────────┼───────────────────────┬──────────────────────┐
-         ▼                       ▼                       ▼                      ▼
-  [ MemberService ]       [ BorrowService ]       [ FineService ]    [ DigitalJournalService ]  <- Tầng Nghiệp vụ (Service)
-         │                       │                       │                      │
-         ├───────────────────────┴───────────────────────┼──────────────────────┘
-         ▼                                               ▼
-  [ PersonRepository ]                            [ FineRepository ]
-  [ UniversityMemberRepository ]                  [ PaymentTransactionRepository ]
-  [ BorrowRepository ]                            [ DigitalJournalRepository ]         <- Tầng Truy xuất Dữ liệu (9 Repositories)
-  [ LicensePackageRepository ]                    [ GrantedLicenseRepository ]
-  [ AccessLogRepository ]
-         │                                               │
-         ├───────────────────────────────────────────────┘
-         ▼
-[ DatabaseConnection ] ── [ DatabaseInitializer ]
-         │                        │
-         ▼                        ▼
-[ 15 Model POJOs ]  ──▶  [ MySQL Database: library_db ]
-                         (schema.sql & sample_data.sql)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Browser as "Trình duyệt Web (Web Client)"
+    participant StaticHandler as "StaticWebHandler (HttpServer)"
+    participant ApiServer as "REST API Handlers (HttpServer)"
+    participant Service as "Tầng Nghiệp vụ (Service & Validator)"
+    participant Repo as "Tầng Repository (Shared Connection)"
+    participant MySQL as "MySQL Database (Port 3306)"
+
+    Note over Browser,StaticHandler: Giai đoạn 1: Nạp Giao diện Single Page Application (SPA)
+    Browser->>StaticHandler: HTTP GET / (hoặc /index.html, /style.css, /app.js)
+    Note right of Browser: Giao thức: HTTP/1.1 (Cổng TCP 8080)
+    StaticHandler-->>Browser: Trả về tài nguyên tĩnh (HTML5, CSS3, JS UTF-8)
+
+    Note over Browser,MySQL: Giai đoạn 2: Gọi Dữ liệu & Xử lý Giao dịch Nghiệp vụ
+    Browser->>ApiServer: HTTP GET / POST /api/{endpoint} (Payload: JSON UTF-8)
+    Note right of Browser: Giao thức: RESTful HTTP/1.1 | Content-Type: application/json
+    ApiServer->>Service: Tiếp nhận Request, gọi Service tương ứng
+    Service->>Service: Thẩm định tính hợp lệ & Ràng buộc nghiệp vụ (Validators: BR01 - BR13)
+    Service->>Repo: Khởi tạo Transaction (conn.setAutoCommit(false))
+    Repo->>MySQL: Thực thi các câu lệnh SQL qua PreparedStatement
+    Note right of Repo: Giao thức: MySQL JDBC Protocol (Cổng TCP 3306)
+    MySQL-->>Repo: Trả về tập kết quả (ResultSet) hoặc số dòng ảnh hưởng
+    Service->>Repo: Xác nhận hoàn tất giao dịch (conn.commit())
+    Repo-->>Service: Ánh xạ kết quả sang POJO / DTO
+    Service-->>ApiServer: Trả về dữ liệu nghiệp vụ
+    ApiServer-->>Browser: HTTP 200 OK | Trả JSON UTF-8 (Kèm Header CORS & No-Cache)
+```
+
+---
+
+### 2.2. Sơ đồ Mô phỏng Cấu trúc Phân tầng của Backend
+Mô hình cấu trúc nội bộ của hệ thống backend Java phân định rành mạch trách nhiệm giữa các gói mã nguồn, bảo đảm nguyên tắc Single Responsibility (SRP) và tính độc lập mô-đun:
+
+```mermaid
+flowchart TD
+    subgraph HTTP_Layer["1. Tầng Giao Tiếp Mạng & Điều Phối HTTP (com.library.api)"]
+        ApiServer["ApiServer (com.sun.net.httpserver.HttpServer - Port 8080)"]
+        ResourceHandler["ResourceHandler\n(GET /api/resources)"]
+        CopyHandler["CopyHandler\n(GET /api/copies)"]
+        BorrowHandler["BorrowHandler\n(GET, POST /api/borrows, /return)"]
+        FineHandler["FineHandler\n(GET /api/fines, POST /payments)"]
+        DigitalHandler["DigitalJournalHandler\n(POST /api/digital-journals/.../access)"]
+        MemberHandler["MemberHandler\n(GET /api/members)"]
+        LogHandler["AccessLogHandler\n(GET /api/access-logs)"]
+        StaticHandler["StaticWebHandler\n(GET /, /index.html, /style.css, /app.js)"]
+        HttpUtils["HttpUtils & JsonUtils\n(CORS, Cache-Control, Exception Mapping, Gson Serializer)"]
+    end
+
+    subgraph Business_Layer["2. Tầng Nghiệp Vụ & Thẩm Định Quy Chế (com.library.service & validation)"]
+        BorrowService["BorrowService\n(Mượn/Trả sách, Transaction)"]
+        FineService["FineService\n(Quản lý phạt & Trả góp, Transaction)"]
+        MemberService["MemberService\n(Tư cách độc giả & Quota)"]
+        DigitalService["DigitalJournalService\n(Bản quyền số & Ghi log)"]
+        
+        Validators["Bộ Thẩm Định Quy Chế (com.library.validation)\n• DataValidator (ID, Tiền, Dải ngày)\n• MemberValidator (BR01, BR05)\n• BorrowValidator (BR10, BR02)\n• FineValidator (BR11)\n• LicenseValidator (BR04, BR12)"]
+    end
+
+    subgraph Exception_Layer["3. Phân Cấp Ngoại Lệ Chuẩn Hóa (com.library.exception)"]
+        LibException["LibraryException (RuntimeException)"]
+        BusinessException["BusinessException\n(IneligibleMember, OverdueBooks, OutstandingFine, QuotaExceeded,\nBookNotAvailable, AlreadyReturned, FineSettled, LicenseExpired)"]
+        ValidationException["ValidationException\n(InvalidInput, InvalidAmount, InvalidDateRange)"]
+        DatabaseException["DatabaseException\n(Bọc SQLException từ JDBC)"]
+    end
+
+    subgraph Data_Layer["4. Tầng Truy Xuất Dữ Liệu (com.library.repository)"]
+        PersonRepo["PersonRepository"]
+        MemberRepo["UniversityMemberRepository"]
+        BorrowRepo["BorrowRepository"]
+        FineRepo["FineRepository"]
+        TxRepo["PaymentTransactionRepository"]
+        ResourceRepo["ResourceRepository"]
+        DigitalRepo["DigitalJournalRepository"]
+        PackageRepo["LicensePackageRepository"]
+        GrantedRepo["GrantedLicenseRepository"]
+        LogRepo["AccessLogRepository"]
+    end
+
+    subgraph Core_Layer["5. Tầng Tiện Ích & Mô Hình Thực Thể (com.library.util & model)"]
+        DbConn["DatabaseConnection (Đọc db.properties)"]
+        DbInit["DatabaseInitializer (Nạp schema.sql & sample_data.sql)"]
+        Models["15 Model POJOs (com.library.model)\nPerson, UniversityMember, ExternalAuthor, Resource, PhysicalBook,\nDigitalJournal, BookCopy, Borrow, Fine, PaymentTransaction, AccessLog..."]
+    end
+
+    subgraph Storage_Layer["6. Tầng Lưu Trữ Dữ Liệu (MySQL Database Engine)"]
+        MySQL_DB[("MySQL Database: library_db\n15 Bảng InnoDB UTF-8 MB4\nQuản lý khóa ngoại & Ràng buộc toàn vẹn")]
+    end
+
+    ApiServer --> Handlers & StaticHandler
+    Handlers --> HttpUtils
+    Handlers --> Business_Layer
+    Business_Layer --> Validators
+    Business_Layer -.-> Exception_Layer
+    Business_Layer --> Data_Layer
+    Data_Layer --> DbConn
+    Data_Layer --> Models
+    Data_Layer --> Storage_Layer
 ```
 
 ---
@@ -293,85 +400,7 @@ Bóc tách toàn bộ logic kiểm tra ra khỏi tầng Service:
 
 ---
 
-## 4. Cấu trúc Thư mục Dự án
-
-```
-database/
-├── .gitignore                                      # Cấu hình chặn file rác, metadata và file nhạy cảm
-├── README.md                                       # Tài liệu mô tả dự án và hướng dẫn sử dụng
-├── Source/                                         # Tài liệu đặc tả và thiết kế hệ thống
-│   ├── G5_phase1.pdf                               # Báo cáo đặc tả yêu cầu giai đoạn 1 (SRS Phase 1)
-│   ├── erDiagram.md                                # Bản vẽ mô hình thực thể quan hệ Mermaid ERD
-│   └── 808050965_2457431158118432_...png           # Sơ đồ ERD trực quan
-└── Project/                                        # Thư mục dự án Java (Eclipse Project)
-    ├── .project                                    # Cấu hình project của Eclipse
-    ├── .classpath                                  # Cấu hình classpath và thư viện của Eclipse
-    ├── .settings/                                  # Cấu hình mã hóa UTF-8 và compiler compliance
-    ├── schema.sql                                  # Kịch bản tạo CSDL library_db và 15 bảng InnoDB
-    ├── sample_data.sql                             # Dữ liệu mẫu kiểm thử đầy đủ các thực thể
-    ├── lib/
-    │   └── mysql-connector-j-26.7.0.jar            # Driver kết nối MySQL JDBC
-    └── src/
-        ├── db.properties                           # File cấu hình kết nối MySQL cục bộ
-        ├── db.properties.example                   # Template mẫu cấu hình kết nối cho thành viên mới
-        └── com/
-            └── library/
-                ├── Main.java                       # File chạy demo kiểm thử toàn bộ luồng & 4 Validation Cases
-                ├── controller/
-                │   └── LibraryController.java      # Tầng điều phối các luồng nghiệp vụ
-                ├── exception/                      # Tầng định nghĩa các ngoại lệ nghiệp vụ & CSDL
-                │   ├── LibraryException.java       # Ngoại lệ gốc (Unchecked)
-                │   ├── DatabaseException.java      # Bọc SQLException từ Repository
-                │   ├── ValidationException.java    # Ngoại lệ kiểm tra dữ liệu
-                │   ├── BusinessException.java      # Ngoại lệ vi phạm quy chế nghiệp vụ
-                │   └── ...                         # Các ngoại lệ cụ thể (BR01, BR05, BR10, BR11, BR04)
-                ├── validation/                     # Tầng kiểm tra tính hợp lệ & quy chế nghiệp vụ
-                │   ├── DataValidator.java          # Kiểm tra kiểu dữ liệu, ID, tiền, dải ngày
-                │   ├── MemberValidator.java        # Kiểm tra tư cách mượn sách (BR01, BR05)
-                │   ├── BorrowValidator.java        # Kiểm tra tình trạng sách & hoàn trả (BR10, BR02)
-                │   ├── FineValidator.java          # Kiểm tra phiếu phạt & trả góp (BR11)
-                │   └── LicenseValidator.java       # Kiểm tra quyền tài liệu số (BR04, BR12)
-                ├── service/                        # Tầng xử lý nghiệp vụ & điều phối validator
-                │   ├── BorrowService.java          # Mượn, trả sách & tính phạt trễ hạn (Test 03)
-                │   ├── FineService.java            # Xử lý trả góp tiền phạt theo đợt (Test 04)
-                │   ├── MemberService.java          # Phân quyền mượn sách theo vai trò (Test 01)
-                │   └── DigitalJournalService.java  # Bản quyền số & ghi log truy cập (Test 02)
-                ├── repository/                     # Tầng truy xuất CSDL trực tiếp qua PreparedStatement
-                │   ├── PersonRepository.java       # CRUD bảng PERSON
-                │   ├── UniversityMemberRepository.java # CRUD bảng UNIVERSITY_MEMBER (JOIN PERSON)
-                │   ├── BorrowRepository.java       # Thao tác BORROW, kiểm tra hạn mức & trễ hạn
-                │   ├── FineRepository.java         # Thao tác FINE, kiểm tra nợ phạt chưa đóng
-                │   ├── PaymentTransactionRepository.java # Thao tác PAYMENT_TRANSACTION & tính tổng nộp
-                │   ├── DigitalJournalRepository.java # CRUD bảng DIGITAL_JOURNAL (JOIN RESOURCE)
-                │   ├── LicensePackageRepository.java # Quản lý LICENSE_PACKAGE & RESOURCE_LICENSE
-                │   ├── GrantedLicenseRepository.java # Quản lý GRANTED_LICENSE & kiểm tra thời hạn
-                │   └── AccessLogRepository.java    # Ghi nhật ký truy cập tốc độ cao (BR13)
-                ├── util/                           # Tầng tiện ích hệ thống
-                │   ├── DatabaseConnection.java     # Cấp phát kết nối JDBC qua db.properties
-                │   └── DatabaseInitializer.java    # Khởi tạo CSDL tự động qua JDBC
-                ├── model/                          # 15 Lớp thực thể POJO ánh xạ 1:1 với CSDL
-                │   ├── Person.java
-                │   ├── UniversityMember.java
-                │   ├── ExternalAuthor.java
-                │   ├── Resource.java
-                │   ├── PhysicalBook.java
-                │   ├── DigitalJournal.java
-                │   ├── BookCopy.java
-                │   ├── LicensePackage.java
-                │   ├── GrantedLicense.java
-                │   ├── ResourceLicense.java
-                │   ├── AuthorOf.java
-                │   ├── Borrow.java
-                │   ├── Fine.java
-                │   ├── PaymentTransaction.java
-                │   └── AccessLog.java
-                └── test/                           # Bộ kiểm thử đơn vị
-                    └── ValidationAndExceptionTest.java # Kiểm thử toàn diện 13 test cases cho Validation/Exception
-```
-
----
-
-## 5. Quy định Cộng tác Git (.gitignore)
+## 4. Quy định Cộng tác Git (.gitignore)
 * Hệ thống đã cấu hình đầy đủ file [`.gitignore`](.gitignore) ở thư mục gốc.
 * **Những thành phần KHÔNG ĐƯỢC push lên Git**:
   * Thư mục cấu hình workspace của Eclipse: `/.metadata/`, `.recommenders/`.

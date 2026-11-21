@@ -108,6 +108,42 @@ public class PersonRepository {
         return list;
     }
 
+    /**
+     * Retrieves all persons with their university membership attributes (if any).
+     */
+    public List<java.util.Map<String, Object>> findAllDetailed() {
+        List<java.util.Map<String, Object>> list = new ArrayList<>();
+        String sql = "SELECT p.person_id, p.ssn, p.name, p.address, p.email, p.phone, p.person_type, " +
+                     "       m.member_id, m.department, m.member_type, m.major, m.academic_rank " +
+                     "FROM PERSON p " +
+                     "LEFT JOIN UNIVERSITY_MEMBER m ON p.person_id = m.person_id " +
+                     "ORDER BY p.person_id ASC";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+                map.put("personId", rs.getInt("person_id"));
+                map.put("ssn", rs.getString("ssn"));
+                map.put("name", rs.getString("name"));
+                map.put("address", rs.getString("address"));
+                map.put("email", rs.getString("email"));
+                map.put("phone", rs.getString("phone"));
+                map.put("personType", rs.getString("person_type"));
+                map.put("memberId", rs.getString("member_id"));
+                map.put("department", rs.getString("department"));
+                map.put("memberType", rs.getString("member_type"));
+                map.put("major", rs.getString("major"));
+                map.put("academicRank", rs.getString("academic_rank"));
+                list.add(map);
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Lỗi khi truy xuất danh sách người dùng chi tiết: " + e.getMessage(), e);
+        }
+        return list;
+    }
+
     private Person mapRowToPerson(ResultSet rs) throws SQLException {
         return new Person(
                 rs.getInt("person_id"),

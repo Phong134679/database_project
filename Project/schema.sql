@@ -102,6 +102,7 @@ CREATE TABLE DIGITAL_JOURNAL (
     url VARCHAR(250),
     file_size INT COMMENT 'Kích thước file tính theo KB/MB',
     format VARCHAR(10) COMMENT 'Định dạng PDF, EPUB, XML',
+    is_public BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Cờ tài liệu mở/công khai cho mọi đối tượng gồm khách ngoài',
     CONSTRAINT fk_digital_journal_resource
         FOREIGN KEY (resource_id) REFERENCES RESOURCE(resource_id)
         ON DELETE CASCADE

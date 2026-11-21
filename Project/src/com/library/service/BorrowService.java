@@ -1,17 +1,23 @@
 package com.library.service;
 
+import com.library.exception.DatabaseException;
 import com.library.exception.InvalidDateRangeException;
+import com.library.exception.LibraryException;
 import com.library.model.Borrow;
 import com.library.model.Fine;
 import com.library.repository.BorrowRepository;
 import com.library.repository.FineRepository;
+import com.library.util.DatabaseConnection;
 import com.library.validation.BorrowValidator;
 import com.library.validation.DataValidator;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Service class implementing business logic operations for borrow transactions.
@@ -51,7 +57,7 @@ public class BorrowService {
     }
 
     /**
-     * Processes a new book borrowing transaction.
+     * Processes a new book borrowing transaction within a single atomic Database Transaction.
      * Enforces Test 01 (BR01: external user rejection), BR05 (role-based quotas and durations),
      * and BR10 (physical book copy tracking).
      * Throws specific BusinessException/ValidationException on failure, returns true on success.
@@ -64,27 +70,54 @@ public class BorrowService {
         // 2. Kiểm tra tính hợp lệ của người mượn (Test 01, BR01, BR05)
         memberService.isEligibleToBorrow(memberId);
 
-        // 3. Kiểm tra tình trạng bản sao sách (BR10)
-        boolean isAvailable = borrowRepository.isCopyAvailable(copyId);
-        BorrowValidator.validateCopyAvailable(isAvailable, copyId);
-
-        // 4. Phân định thời hạn mượn theo vai trò thành viên (BR05)
+        // 3. Phân định thời hạn mượn theo vai trò thành viên (BR05)
         int loanDays = memberService.getLoanDurationDays(memberId);
         LocalDate today = LocalDate.now();
         LocalDate dueDate = today.plusDays(loanDays);
 
         Borrow borrow = new Borrow(0, memberId, copyId, today, dueDate, null);
-        borrowRepository.insertBorrow(borrow);
 
-        if (borrow.getBorrowId() > 0) {
-            borrowRepository.updateCopyAvailability(copyId, "Borrowed");
+        // 4. Thực thi kiểm tra trạng thái và tạo lượt mượn trong cùng 1 Transaction
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
+
+            // Kiểm tra trạng thái bản sao sách trong transaction (BR10)
+            boolean isAvailable = borrowRepository.isCopyAvailable(conn, copyId);
+            BorrowValidator.validateCopyAvailable(isAvailable, copyId);
+
+            borrowRepository.insertBorrow(conn, borrow);
+            borrowRepository.updateCopyAvailability(conn, copyId, "Borrowed");
+
+            conn.commit();
+
             System.out.println("[BorrowService] SUCCESS: Borrow ID " + borrow.getBorrowId() +
                     " created for Member " + memberId + ", Copy " + copyId +
                     " (Loan Duration: " + loanDays + " days, Due Date: " + dueDate + ")");
             return true;
+        } catch (Exception e) {
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException rollbackEx) {
+                    System.err.println("[BorrowService] Rollback failed: " + rollbackEx.getMessage());
+                }
+            }
+            if (e instanceof LibraryException) {
+                throw (LibraryException) e;
+            }
+            throw new DatabaseException("Lỗi giao dịch khi mượn sách: " + e.getMessage(), e);
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException closeEx) {
+                    // ignore
+                }
+            }
         }
-
-        return false;
     }
 
     /**
@@ -95,7 +128,7 @@ public class BorrowService {
     }
 
     /**
-     * Processes book return with a specified return date.
+     * Processes book return with a specified return date within a single atomic Database Transaction.
      * Automatically generates a FINE record if returned past due_date (Validation Case Test 03 & FR05).
      * Throws specific BusinessException/ValidationException on failure, returns true on success.
      */
@@ -111,27 +144,70 @@ public class BorrowService {
         }
 
         borrow.setReturnDate(actualReturnDate);
-        borrowRepository.updateBorrow(borrow);
-        borrowRepository.updateCopyAvailability(borrow.getCopyId(), "Available");
 
-        // Test 03 & FR05: Tự động phát sinh phiếu phạt khi trả sách quá hạn
-        if (borrow.getDueDate() != null && actualReturnDate.isAfter(borrow.getDueDate())) {
-            long daysLate = ChronoUnit.DAYS.between(borrow.getDueDate(), actualReturnDate);
-            BigDecimal penaltyAmount = BigDecimal.valueOf(daysLate * DAILY_PENALTY_RATE);
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
 
-            // Kiểm tra xem đã có phiếu phạt cho lượt mượn này chưa (tránh trùng lặp)
-            Fine existingFine = fineRepository.findByBorrowId(borrowId);
-            if (existingFine == null) {
-                LocalDate fineDueDate = actualReturnDate.plusDays(14); // Hạn thanh toán phạt 14 ngày
-                Fine newFine = new Fine(0, borrowId, penaltyAmount, "Unpaid", fineDueDate);
-                fineRepository.insertFine(newFine);
-                System.out.println("[BorrowService] OVERDUE DETECTED (" + daysLate + " days late). " +
-                        "Generated Fine ID: " + newFine.getFineId() + " (Amount: " +
-                        String.format("%,.0f", penaltyAmount.doubleValue()) + " VND, Due Date: " + fineDueDate + ")");
+            borrowRepository.updateBorrow(conn, borrow);
+            borrowRepository.updateCopyAvailability(conn, borrow.getCopyId(), "Available");
+
+            // Test 03 & FR05: Tự động phát sinh phiếu phạt khi trả sách quá hạn
+            if (borrow.getDueDate() != null && actualReturnDate.isAfter(borrow.getDueDate())) {
+                long daysLate = ChronoUnit.DAYS.between(borrow.getDueDate(), actualReturnDate);
+                BigDecimal penaltyAmount = BigDecimal.valueOf(daysLate * DAILY_PENALTY_RATE);
+
+                // Kiểm tra xem đã có phiếu phạt cho lượt mượn này chưa (tránh trùng lặp)
+                Fine existingFine = fineRepository.findByBorrowId(conn, borrowId);
+                if (existingFine == null) {
+                    LocalDate fineDueDate = actualReturnDate.plusDays(14); // Hạn thanh toán phạt 14 ngày
+                    Fine newFine = new Fine(0, borrowId, penaltyAmount, "Unpaid", fineDueDate);
+                    fineRepository.insertFine(conn, newFine);
+                    System.out.println("[BorrowService] OVERDUE DETECTED (" + daysLate + " days late). " +
+                            "Generated Fine ID: " + newFine.getFineId() + " (Amount: " +
+                            String.format("%,.0f", penaltyAmount.doubleValue()) + " VND, Due Date: " + fineDueDate + ")");
+                }
+            }
+
+            conn.commit();
+            return true;
+        } catch (Exception e) {
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException rollbackEx) {
+                    System.err.println("[BorrowService] Rollback failed: " + rollbackEx.getMessage());
+                }
+            }
+            if (e instanceof LibraryException) {
+                throw (LibraryException) e;
+            }
+            throw new DatabaseException("Lỗi giao dịch khi trả sách: " + e.getMessage(), e);
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException closeEx) {
+                    // ignore
+                }
             }
         }
+    }
 
-        return true;
+    /**
+     * Retrieves all borrows with detailed member name and book title for UI.
+     */
+    public List<Map<String, Object>> getAllBorrowsDetailed() {
+        return borrowRepository.findAllBorrowsDetailed();
+    }
+
+    /**
+     * Retrieves all book copies for UI.
+     */
+    public List<Map<String, Object>> getAllCopiesDetailed() {
+        return borrowRepository.findAllCopiesDetailed();
     }
 
     /**
