@@ -66,13 +66,12 @@
                 <th>Phân loại</th>
                 <th>Chủ đề</th>
                 <th>Ngày xuất bản</th>
-                <th>Mã định danh (DOI)</th>
                 <th>Thông tin kho / Tệp</th>
-                <th>Bản sao (Sẵn sàng / Tổng)</th>
+                <th>Bản sao / Đọc trực tuyến</th>
               </tr>
             </thead>
             <tbody id="resourcesBody">
-              <tr><td colspan="8" class="empty-state">Đang tải danh mục tài nguyên...</td></tr>
+              <tr><td colspan="7" class="empty-state">Đang tải danh mục tài nguyên...</td></tr>
             </tbody>
           </table>
         </div>
@@ -208,15 +207,15 @@
           <span>Kiểm tra Quyền truy cập & Đọc Tạp chí số (BR04, BR12, FR08)</span>
         </div>
         <p class="hint" style="margin-bottom: 16px;">
-          Theo quy chế <strong>BR04 & BR12</strong>, tài liệu số có bản quyền thương mại mặc định bị khóa và yêu cầu gói bản quyền (`GRANTED_LICENSE`) còn hạn. Các tài liệu được gắn cờ <strong>Open Access (is_public = TRUE)</strong> cho phép mọi đối tượng (bao gồm cả Khách ngoài / GUEST) truy cập tự do. Mọi hành vi truy cập đều được ghi nhận vào nhật ký độc lập <strong>BR13</strong>.
+          Theo quy chế <strong>BR04 & BR12</strong>, tài liệu số có bản quyền thương mại yêu cầu tài khoản độc giả sở hữu gói bản quyền (`GRANTED_LICENSE`) còn hạn. Các tài liệu <strong>Open Access (is_public = TRUE)</strong> cho phép đọc trực tuyến tự do. Hệ thống <strong>đã bãi bỏ chức năng download</strong> (chuyển sang đọc trực tuyến), <strong>không theo dõi person_id</strong> và <strong>không lưu access_timestamp</strong> trong nhật ký; bảng <strong>ACCESS_LOG</strong> chỉ ghi nhận mã tài liệu và địa chỉ IP client.
         </p>
 
         <form id="accessJournalForm" onsubmit="handleJournalAccessSubmit(event)">
           <div class="form-grid">
             <div class="form-group">
-              <label for="accessPersonSelect">Độc giả yêu cầu truy cập (*):</label>
-              <select id="accessPersonSelect" required>
-                <option value="">-- Chọn độc giả --</option>
+              <label for="accessPersonSelect">Độc giả (Tùy chọn - Cần khi tài liệu có License):</label>
+              <select id="accessPersonSelect">
+                <option value="">-- Đọc ẩn danh (Open Access) / Chọn nếu có License --</option>
               </select>
             </div>
 
@@ -239,7 +238,7 @@
           </div>
 
           <button type="submit" class="btn btn-primary" id="btnSubmitAccess">
-            🔓 Thẩm định quyền & Đọc tài liệu
+            📖 Thẩm định quyền & Đọc trực tuyến
           </button>
         </form>
 
@@ -258,15 +257,12 @@
             <thead>
               <tr>
                 <th>Log ID</th>
-                <th>Thời điểm truy cập</th>
-                <th>Độc giả</th>
                 <th>Tài liệu số</th>
-                <th>Địa chỉ IP</th>
-                <th>Trạng thái (Download Success)</th>
+                <th>Địa chỉ IP Client</th>
               </tr>
             </thead>
             <tbody id="accessLogsBody">
-              <tr><td colspan="6" class="empty-state">Đang tải nhật ký truy cập...</td></tr>
+              <tr><td colspan="3" class="empty-state">Đang tải nhật ký truy cập...</td></tr>
             </tbody>
           </table>
         </div>

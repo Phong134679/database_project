@@ -66,7 +66,7 @@ Dưới đây là đặc tả chi tiết cấu trúc CSDL phục vụ từng Tab
 - **Các bảng con kế thừa (Subclass Tables)**:
   - `PHYSICAL_BOOK` (Subclass 1): Lưu thuộc tính riêng của sách in vật lý (`shelf_location` - thuộc tính `isbn` đã được loại bỏ).
     - *Kỹ thuật JOIN*: `RESOURCE` **LEFT JOIN** `PHYSICAL_BOOK` ON `r.resource_id = pb.resource_id`.
-  - `DIGITAL_JOURNAL` (Subclass 2): Lưu thuộc tính riêng của tài liệu số (`doi`, `url`, `file_size`, `format`, `is_public`).
+  - `DIGITAL_JOURNAL` (Subclass 2): Lưu thuộc tính riêng của tài liệu số (`url`, `file_size`, `format`, `is_public` - đã loại bỏ `doi`).
     - *Kỹ thuật JOIN*: `RESOURCE` **LEFT JOIN** `DIGITAL_JOURNAL` ON `r.resource_id = dj.resource_id`.
 - **Bảng liên quan theo dõi thực thể cá thể (Tracking Table)**:
   - `BOOK_COPY`: Quản lý từng bản sao vật lý cụ thể của sách trên giá kệ (`copy_id` dạng `<resource_id>_<index>`, `resource_id`, `availability_status` - đã loại bỏ `barcode`).
@@ -86,7 +86,6 @@ SELECT
     -- Thuộc tính sách in (nếu là PHYSICAL_BOOK)
     pb.shelf_location,
     -- Thuộc tính tạp chí số (nếu là DIGITAL_JOURNAL)
-    dj.doi,
     dj.url,
     dj.file_size,
     dj.format,
@@ -101,7 +100,7 @@ LEFT JOIN BOOK_COPY bc ON r.resource_id = bc.resource_id
 GROUP BY 
     r.resource_id, r.title, r.publish_date, r.topic, r.resource_type,
     pb.shelf_location,
-    dj.doi, dj.url, dj.file_size, dj.format, dj.is_public
+    dj.url, dj.file_size, dj.format, dj.is_public
 ORDER BY r.resource_id ASC;
 ```
 
@@ -247,7 +246,7 @@ ORDER BY f.fine_id DESC;
 
 #### 2. Các bảng CSDL cần sử dụng & Mối quan hệ kết hợp
 - **Bảng tài nguyên số (Target Resource Tables)**:
-  - `DIGITAL_JOURNAL` & `RESOURCE`: Lấy thông tin bài báo (`resource_id`, `title`, `doi`, `url`, `file_size`, `format`, `is_public`).
+  - `DIGITAL_JOURNAL` & `RESOURCE`: Lấy thông tin bài báo (`resource_id`, `title`, `url`, `file_size`, `format`, `is_public`).
 - **Bảng người dùng yêu cầu (Requesting User Table)**:
   - `PERSON`: Định danh người yêu cầu truy cập (`person_id`, `name`, `email`, `person_type`).
 - **Bảng liên kết tác giả (Authorship Check)**:
@@ -259,7 +258,7 @@ ORDER BY f.fine_id DESC;
   - `LICENSE_PACKAGE`: Lấy thông tin tên gói bản quyền, nhà cung cấp.
     - *Kỹ thuật JOIN*: `GRANTED_LICENSE` **JOIN** `RESOURCE_LICENSE` ON `gl.license_id = rl.license_id`.
 - **Bảng nhật ký kiểm toán (Audit Logging Table - BR13)**:
-  - `ACCESS_LOG`: Lưu vết lịch sử truy cập độc lập không khóa ngoại cứng (`log_id`, `person_id`, `journal_resource_id`, `access_timestamp`, `ip_address`, `download_success`).
+  - `ACCESS_LOG`: Lưu vết lịch sử truy cập độc lập không khóa ngoại cứng (`log_id`, `journal_resource_id`, `ip_address`).
 
 #### 3. Câu lệnh truy vấn thẩm định bản quyền & Truy vấn nhật ký
 ```sql
@@ -272,26 +271,21 @@ WHERE gl.person_id = :personId
   AND gl.valid_from <= :accessDate
   AND gl.valid_to >= :accessDate;
 
--- 2. Truy vấn hiển thị bảng nhật ký ACCESS_LOG (Soft-Join hiển thị thông tin người dùng và tài liệu)
+-- 2. Truy vấn hiển thị bảng nhật ký ACCESS_LOG (Soft-Join hiển thị tiêu đề tài liệu)
 SELECT 
     al.log_id,
-    al.access_timestamp,
-    al.person_id,
-    p.name AS person_name,
     al.journal_resource_id,
     r.title AS journal_title,
-    al.ip_address,
-    al.download_success
+    al.ip_address
 FROM ACCESS_LOG al
-LEFT JOIN PERSON p ON al.person_id = p.person_id
 LEFT JOIN RESOURCE r ON al.journal_resource_id = r.resource_id
 ORDER BY al.log_id DESC;
 ```
 
 #### 4. Các thao tác ghi dữ liệu (Data Modifications)
 - **Ghi nhận nhật ký truy cập (POST /api/digital-journals/{id}/access)**:
-  - Luôn thực thi lệnh ghi log bất kể thẩm định thành công hay thất bại (BR13):
-    `INSERT INTO ACCESS_LOG (person_id, journal_resource_id, access_timestamp, ip_address, download_success) VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?);`
+  - Ghi vết `journal_resource_id` và `ip_address` (không theo dõi person_id, không ghi timestamp, bãi bỏ download):
+    `INSERT INTO ACCESS_LOG (journal_resource_id, ip_address) VALUES (?, ?);`
 
 ---
 

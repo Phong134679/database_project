@@ -493,12 +493,13 @@ public class ApiServer {
         private void handleAccess(HttpExchange exchange, int journalId) throws IOException {
             try {
                 JsonObject json = HttpUtils.readJsonBody(exchange);
-                if (!json.has("personId")) {
-                    HttpUtils.sendError(exchange, 400, "INVALID_INPUT", "Yêu cầu trường 'personId'.");
-                    return;
+                Integer personId = null;
+                if (json.has("personId") && !json.get("personId").isJsonNull() && !json.get("personId").getAsString().trim().isEmpty()) {
+                    try {
+                        personId = json.get("personId").getAsInt();
+                    } catch (Exception ignored) {}
                 }
 
-                int personId = json.get("personId").getAsInt();
                 String ipAddress = json.has("ipAddress") ? json.get("ipAddress").getAsString() : "127.0.0.1";
                 LocalDate accessDate = LocalDate.now();
                 if (json.has("accessDate") && !json.get("accessDate").isJsonNull()) {
@@ -511,7 +512,7 @@ public class ApiServer {
                 DigitalJournal journal = journalService.getJournalDetails(journalId);
 
                 try {
-                    boolean isAuthor = journalRepo.isAuthorOfResource(personId, journalId);
+                    boolean isAuthor = personId != null && personId > 0 && journalRepo.isAuthorOfResource(personId, journalId);
                     boolean granted = journalService.accessDigitalJournal(personId, journalId, ipAddress, accessDate);
                     Map<String, Object> res = new LinkedHashMap<>();
                     res.put("accessGranted", granted);
@@ -521,14 +522,13 @@ public class ApiServer {
                     if (isAuthor) {
                         msg = "Truy cập được phê duyệt (Đặc quyền Tác giả: Tác giả được tự do truy cập tác phẩm của mình mà không cần gói bản quyền).";
                     } else if (journal.isPublic()) {
-                        msg = "Truy cập được phê duyệt (Tài liệu công khai / Open Access - Không giới hạn đối tượng).";
+                        msg = "Truy cập được phê duyệt (Tài liệu công khai / Open Access - Đọc trực tuyến tự do).";
                     } else {
                         msg = "Truy cập được phê duyệt (Gói bản quyền còn hiệu lực).";
                     }
                     res.put("message", msg);
                     res.put("journalId", journalId);
                     res.put("title", journal.getTitle());
-                    res.put("doi", journal.getDoi());
                     res.put("url", journal.getUrl());
                     res.put("format", journal.getFormat());
                     res.put("fileSize", journal.getFileSize());

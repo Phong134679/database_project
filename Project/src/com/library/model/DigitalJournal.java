@@ -4,9 +4,10 @@ import java.time.LocalDate;
 
 /**
  * Subclass of Resource representing a digital journal or article.
+ * Thuộc tính 'doi' đã được bãi bỏ do người dùng truy cập trực tiếp qua url/hệ thống
+ * mà không cần mã định danh quốc tế DOI cho từng bản online.
  */
 public class DigitalJournal extends Resource {
-    private String doi;
     private String url;
     private int fileSize;
     private String format;
@@ -17,26 +18,17 @@ public class DigitalJournal extends Resource {
     }
 
     public DigitalJournal(int resourceId, String title, LocalDate publishDate, String topic, String resourceType,
-                          String doi, String url, int fileSize, String format) {
-        this(resourceId, title, publishDate, topic, resourceType, doi, url, fileSize, format, false);
+                          String url, int fileSize, String format) {
+        this(resourceId, title, publishDate, topic, resourceType, url, fileSize, format, false);
     }
 
     public DigitalJournal(int resourceId, String title, LocalDate publishDate, String topic, String resourceType,
-                          String doi, String url, int fileSize, String format, boolean isPublic) {
+                          String url, int fileSize, String format, boolean isPublic) {
         super(resourceId, title, publishDate, topic, resourceType);
-        this.doi = doi;
         this.url = url;
         this.fileSize = fileSize;
         this.format = format;
         this.isPublic = isPublic;
-    }
-
-    public String getDoi() {
-        return doi;
-    }
-
-    public void setDoi(String doi) {
-        this.doi = doi;
     }
 
     public String getUrl() {
@@ -76,7 +68,6 @@ public class DigitalJournal extends Resource {
         return "DigitalJournal{" +
                 "resourceId=" + getResourceId() +
                 ", title='" + getTitle() + '\'' +
-                ", doi='" + doi + '\'' +
                 ", url='" + url + '\'' +
                 ", fileSize=" + fileSize +
                 ", format='" + format + '\'' +

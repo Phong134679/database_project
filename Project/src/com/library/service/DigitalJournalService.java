@@ -50,15 +50,15 @@ public class DigitalJournalService {
 
     /**
      * Executes digital journal access verification and records access log (Test 02, BR04, BR12, BR13).
+     * Bỏ theo dõi person_id, bỏ timestamp, bỏ chức năng download (chuyển sang đọc trực tuyến).
      *
-     * @param personId User attempting to read/download.
+     * @param personId User attempting to read (optional for Open Access).
      * @param journalResourceId Target digital resource.
      * @param ipAddress IP address of the requesting client.
      * @param accessDate Date of access request.
      * @return true if access granted (valid unexpired license), throws LicenseExpiredException if blocked.
      */
-    public boolean accessDigitalJournal(int personId, int journalResourceId, String ipAddress, LocalDate accessDate) {
-        DataValidator.validatePositiveId(personId, "Person ID");
+    public boolean accessDigitalJournal(Integer personId, int journalResourceId, String ipAddress, LocalDate accessDate) {
         DataValidator.validatePositiveId(journalResourceId, "Journal Resource ID");
 
         LocalDate checkDate = accessDate != null ? accessDate : LocalDate.now();
@@ -67,40 +67,45 @@ public class DigitalJournalService {
         DigitalJournal journal = journalRepository.findById(journalResourceId);
         LicenseValidator.validateJournalExists(journal, journalResourceId);
 
-        // 2. Kiểm tra thông tin người dùng
-        Person person = personRepository.findById(personId);
-        String userName = person != null ? person.getName() : ("Person ID " + personId);
+        // 2. Ghi nhận nhật ký truy cập vào ACCESS_LOG bất kể thành công hay thất bại (BR13 & FR08)
+        // Chỉ lưu vết journal_resource_id và ip_address (không lưu person_id, không lưu timestamp, không có download)
+        AccessLog log = new AccessLog(
+                0,
+                journalResourceId,
+                ipAddress != null ? ipAddress : "127.0.0.1"
+        );
+        accessLogRepository.insertLog(log);
 
         // 3. Kiểm tra tính hợp lệ của bản quyền (BR04, BR12), tài liệu công khai (Open Access),
         //    hoặc Đặc quyền Tác giả (Tác giả được tự do truy cập tác phẩm của mình)
         boolean isPublic = journal.isPublic();
+        if (isPublic) {
+            System.out.println("[DigitalJournalService] ACCESS GRANTED (Tài liệu công khai / Open Access): Journal: \"" +
+                    journal.getTitle() + "\" from IP: " + ipAddress);
+            System.out.println("    -> Online Reader URL: " + journal.getUrl() + " [Format: " + journal.getFormat() +
+                    ", Size: " + journal.getFileSize() + " KB]");
+            return true;
+        }
+
+        // Với tài liệu không công khai, yêu cầu xác thực người dùng
+        if (personId == null || personId <= 0) {
+            throw new com.library.exception.LicenseExpiredException("Tài liệu số này yêu cầu bản quyền (🔒 Cần License). Vui lòng chọn tài khoản độc giả để thẩm định quyền đọc.");
+        }
+
+        Person person = personRepository.findById(personId);
+        String userName = person != null ? person.getName() : ("Person ID " + personId);
+
         boolean isAuthor = journalRepository.isAuthorOfResource(personId, journalResourceId);
-        boolean hasActiveLicense = isPublic || isAuthor || grantedLicenseRepository.hasActiveLicenseForJournal(personId, journalResourceId, checkDate);
+        boolean hasActiveLicense = isAuthor || grantedLicenseRepository.hasActiveLicenseForJournal(personId, journalResourceId, checkDate);
 
-        // 4. Ghi nhận nhật ký truy cập vào ACCESS_LOG bất kể thành công hay thất bại (BR13 & FR08)
-        AccessLog log = new AccessLog(
-                0,
-                personId,
-                journalResourceId,
-                LocalDateTime.now(),
-                ipAddress != null ? ipAddress : "127.0.0.1",
-                hasActiveLicense
-        );
-        accessLogRepository.insertLog(log);
-
-        // 5. Trả kết quả: Nếu Open Access, là Tác giả, hoặc có bản quyền hợp lệ -> Cấp quyền
+        // 4. Trả kết quả: Nếu là Tác giả hoặc có bản quyền hợp lệ -> Cấp quyền đọc trực tuyến
         if (hasActiveLicense) {
-            String accessType;
-            if (isAuthor) {
-                accessType = "Đặc quyền Tác giả (Tác giả tự do truy cập tác phẩm của mình)";
-            } else if (isPublic) {
-                accessType = "Tài liệu công khai (Open Access)";
-            } else {
-                accessType = "Gói bản quyền hợp lệ";
-            }
+            String accessType = isAuthor
+                    ? "Đặc quyền Tác giả (Tác giả tự do truy cập tác phẩm của mình)"
+                    : "Gói bản quyền hợp lệ";
             System.out.println("[DigitalJournalService] ACCESS GRANTED (" + accessType + "): User [" + userName +
-                    "] accessed journal: \"" + journal.getTitle() + "\" (DOI: " + journal.getDoi() + ")");
-            System.out.println("    -> Download URL: " + journal.getUrl() + " [Format: " + journal.getFormat() +
+                    "] accessed journal: \"" + journal.getTitle() + "\"");
+            System.out.println("    -> Online Reader URL: " + journal.getUrl() + " [Format: " + journal.getFormat() +
                     ", Size: " + journal.getFileSize() + " KB]");
             return true;
         } else {
@@ -109,6 +114,10 @@ public class DigitalJournalService {
             LicenseValidator.validateActiveLicense(false, userName, journal.getTitle(), checkDate);
             return false;
         }
+    }
+
+    public boolean accessDigitalJournal(int personId, int journalResourceId, String ipAddress, LocalDate accessDate) {
+        return accessDigitalJournal(Integer.valueOf(personId), journalResourceId, ipAddress, accessDate);
     }
 
     /**

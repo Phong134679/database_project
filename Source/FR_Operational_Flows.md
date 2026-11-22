@@ -89,7 +89,7 @@ flowchart TD
 - **Thực thể CSDL**:
   - `RESOURCE` (Superclass: `resource_id`, `title`, `publish_date`, `topic`, `resource_type`: `'PHYSICAL_BOOK'` hoặc `'DIGITAL_JOURNAL'`).
   - `PHYSICAL_BOOK` (Subclass: `resource_id`, `shelf_location` - Thuộc tính `isbn` đã được loại bỏ để tinh giản).
-  - `DIGITAL_JOURNAL` (Subclass: `resource_id`, `doi`, `url`, `file_size`, `format`, `is_public`).
+  - `DIGITAL_JOURNAL` (Subclass: `resource_id`, `url`, `file_size`, `format`, `is_public` - Thuộc tính `doi` đã được loại bỏ để tinh giản).
   - `AUTHOR_OF` & `PERSON`: Liên kết tác giả sáng tác tài nguyên.
 
 #### 2. Quy chế Nghiệp vụ chi phối
@@ -257,7 +257,7 @@ sequenceDiagram
 #### 1. Mục tiêu & Thực thể liên quan
 - **Mục tiêu**: Kiểm soát quyền truy cập trực tuyến đối với các tài liệu số, bảo đảm quyền sở hữu trí tuệ của nhà xuất bản, đồng thời bảo vệ đặc quyền tự do truy cập tác phẩm của chính các tác giả sáng tác.
 - **Thực thể CSDL**:
-  - `DIGITAL_JOURNAL` (`resource_id`, `doi`, `url`, `file_size`, `format`, `is_public`).
+  - `DIGITAL_JOURNAL` (`resource_id`, `url`, `file_size`, `format`, `is_public`).
   - `AUTHOR_OF` (`person_id`, `resource_id`: Quan hệ định danh tác giả tác phẩm).
   - `EXTERNAL_AUTHOR` & `UNIVERSITY_MEMBER`: Phân định tư cách tác giả.
   - `LICENSE_PACKAGE` (`license_id`, `license_name`, `provider`, `description`).
@@ -310,18 +310,19 @@ flowchart TD
 #### 1. Mục tiêu & Thực thể liên quan
 - **Mục tiêu**: Lưu vết toàn bộ lịch sử tương tác với tài nguyên số để phục vụ thống kê lượt đọc, kiểm toán an ninh và phát hiện các hành vi quét dữ liệu trái phép.
 - **Thực thể CSDL**:
-  - `ACCESS_LOG` (`log_id`, `access_timestamp`, `ip_address`, `download_success`, `person_id`, `journal_resource_id`).
+  - `ACCESS_LOG` (`log_id`, `journal_resource_id`, `ip_address`).
 
 #### 2. Quy chế Nghiệp vụ chi phối
 - **BR13 (High-throughput Audit Logging)**:
-  - Bảng `ACCESS_LOG` phải ghi nhận mọi lượt yêu cầu truy cập, **bất kể yêu cầu đó được cấp quyền thành công hay bị từ chối**.
-  - **Tối ưu hóa kiến trúc CSDL**: Bảng `ACCESS_LOG` được thiết kế **không sử dụng khóa ngoại cứng (`FOREIGN KEY`)** liên kết sang bảng `PERSON` và `RESOURCE`. Điều này loại bỏ hoàn toàn chi phí khóa bảng (Lock contention) và kiểm tra toàn vẹn tham chiếu chéo, bảo đảm tốc độ ghi dữ liệu cực nhanh (High Write Throughput) đáp ứng tải cao khi có hàng nghìn bạn đọc truy cập đồng thời.
+  - Bảng `ACCESS_LOG` ghi nhận lượt yêu cầu truy cập tài liệu số.
+  - **Tối ưu hóa kiến trúc CSDL**: Bảng `ACCESS_LOG` được thiết kế **không sử dụng khóa ngoại cứng (`FOREIGN KEY`)** liên kết sang bảng `RESOURCE`. Điều này loại bỏ hoàn toàn chi phí khóa bảng (Lock contention) và kiểm tra toàn vẹn tham chiếu chéo, bảo đảm tốc độ ghi dữ liệu cực nhanh (High Write Throughput).
+  - Không theo dõi `person_id`, không ghi `access_timestamp`, và không hỗ trợ chức năng tải xuống (chuyển sang đọc trực tuyến).
 
 #### 3. Luồng Hoạt động (Operational Flow)
-1. Khi có bất kỳ request thẩm định tài liệu số nào được gửi đến từ `FR07`:
-2. Hệ thống trích xuất thông tin: `person_id`, `journal_resource_id`, địa chỉ IP người dùng (`ip_address`), thời gian hiện tại (`access_timestamp`), và kết quả thẩm định (`download_success`: `1` nếu thành công, `0` nếu bị chặn).
-3. Thực thi câu lệnh `INSERT INTO ACCESS_LOG` độc lập với luồng đọc file.
-4. Giao diện quản trị cho phép tra cứu bảng nhật ký thời gian thực kết hợp JOIN mềm hiển thị tên độc giả và tiêu đề tài nguyên.
+1. Khi có request đọc tài liệu số được gửi đến từ `FR07`:
+2. Hệ thống trích xuất thông tin: `journal_resource_id` và địa chỉ IP người dùng (`ip_address`).
+3. Thực thi câu lệnh `INSERT INTO ACCESS_LOG (journal_resource_id, ip_address) VALUES (?, ?)`.
+4. Giao diện quản trị cho phép tra cứu bảng nhật ký thời gian thực kết hợp JOIN mềm hiển thị tiêu đề tài nguyên.
 
 ---
 
@@ -447,17 +448,28 @@ Dưới đây là đánh giá kỹ thuật chuyên sâu về các định hướ
   3. Việc duy trì thêm một cột riêng biệt `barcode VARCHAR(50) UNIQUE` trong CSDL tạo ra sự dư thừa dữ liệu (redundancy) 100%, tốn kém thêm một chỉ mục UNIQUE B-Tree, và tạo thêm gánh nặng nhập liệu kép cho thủ thư.
 - **Quyết định kiến trúc**: **LOẠI BỎ HOÀN TOÀN THUỘC TÍNH `barcode`** khỏi bảng `BOOK_COPY`. Thuộc tính `copy_id` kiểu `VARCHAR(30)` đảm nhiệm trọn vẹn cả 3 chức năng: Khóa chính CSDL, Định danh ngữ nghĩa bản sao, và Mã quét quang học.
 
-### 5.4. Đánh giá chức năng của thuộc tính `doi` trong `DIGITAL_JOURNAL`
-- **Đánh giá**:
-  - DOI (Digital Object Identifier) là tiêu chuẩn định danh quốc tế dành cho các bài báo khoa học xuất bản trên các nhà xuất bản lớn (IEEE, ACM, Springer).
-  - Đối với hệ thống Thư viện số & Lưu trữ mở nội bộ trường, nếu người dùng chỉ truy cập trực tiếp bài báo thông qua đường dẫn tệp (`url`) và định danh tài nguyên nội bộ (`resource_id`), thì thuộc tính `doi` **không đóng vai trò quyết định trong việc khóa/mở quyền truy cập**. Việc bỏ `doi` (hoặc cho phép NULL) giúp hệ thống đơn giản hơn và dễ dàng tiếp nhận các tài liệu số nội bộ (đồ án, luận văn sinh viên) vốn không có mã DOI quốc tế.
+### 5.4. Đánh giá chức năng của thuộc tính `doi` và quyết định loại bỏ khỏi `DIGITAL_JOURNAL`
+- **Bản chất của DOI (Digital Object Identifier)**:
+  - DOI là tiêu chuẩn định danh quốc tế dành cho các bài báo khoa học xuất bản trên các nhà xuất bản lớn (IEEE, ACM, Springer).
+  - Trong CSDL Thư viện: Bảng cha `RESOURCE` đã có Khóa chính `resource_id` (INT) đảm bảo tính duy nhất tuyệt đối cho mọi tài nguyên trên toàn hệ thống. `DIGITAL_JOURNAL` là bảng con chuyên biệt hóa Is-A có khóa chính `resource_id` kế thừa từ `RESOURCE`.
+- **Đánh giá nghiệp vụ & Quyết định**:
+  - Người dùng truy cập bài báo trực tiếp thông qua đường dẫn `url` và giao diện thư viện số mà **không cần định danh độc lập cho từng bản online của mỗi resource tương ứng**.
+  - Việc duy trì `doi VARCHAR(100) UNIQUE NOT NULL` tạo ra ràng buộc dư thừa, cản trở việc số hóa và tiếp nhận các tài liệu số nội bộ trường (báo cáo NCKH, đồ án, luận văn sinh viên) vốn không có mã DOI quốc tế.
+  - **Quyết định**: **LOẠI BỎ HOÀN TOÀN THUỘC TÍNH `doi`** khỏi bảng `DIGITAL_JOURNAL`.
 
-### 5.5. Bỏ chức năng download; bỏ thuộc tính `download_success` ở `ACCESS_LOG`
-- **Đánh giá**:
-  - Khi hệ thống chuyển sang mô hình "Đọc trực tuyến" (Online Reader / In-browser Viewer) để bảo vệ bản quyền, hành vi tương tác là "Truy cập / Xem" chứ không phải "Tải file về máy".
-  - Thuộc tính `download_success` trong `ACCESS_LOG` nên được đổi tên thành **`access_granted` (BOOLEAN)**. Thuộc tính này phản ánh trung thực bản chất kiểm toán: Yêu cầu mở tài liệu của người dùng có được chấp thuận hay bị từ chối do vi phạm bản quyền.
+### 5.5. Bỏ chức năng download; bãi bỏ thuộc tính `download_success` ở `ACCESS_LOG`
+- **Chuyển dịch sang mô hình Đọc trực tuyến (Online Reader / In-browser Viewer)**:
+  - Để bảo vệ bản quyền tài liệu số và ngăn chặn hành vi tải lậu toàn bộ cơ sở dữ liệu số, hệ thống bãi bỏ chức năng "Download file về máy", chuyển dịch hoàn toàn sang mô hình "Đọc trực tuyến" thông qua giao diện Web Reader.
+  - Trên web UI: Bỏ các nút tải file ("Download URL"), chỉ cung cấp liên kết xem/đọc trực tuyến ("📖 Đọc trực tuyến").
+- **Hệ quả đối với CSDL**:
+  - Trong bảng `ACCESS_LOG`, chức năng download không còn tồn tại, do đó **LOẠI BỎ HOÀN TOÀN THUỘC TÍNH `download_success`**.
 
 ### 5.6. Bỏ theo dõi `person_id` trong `ACCESS_LOG`, chỉ ghi nhận `ip_address`
-- **Đánh giá**:
-  - Đối với các tài liệu mở (**Open Access / `is_public = TRUE`**): Khách vãng lai và bạn đọc ẩn danh truy cập không cần đăng nhập, do đó `person_id` hoàn toàn có thể mang giá trị **`NULL`**, hệ thống chỉ cần lưu `ip_address` và thời gian truy cập để thống kê lưu lượng đọc.
-  - Tuy nhiên, đối với tài liệu có bản quyền thương mại (**`is_public = FALSE`**): Bản quyền được cấp theo cá nhân (`GRANTED_LICENSE.person_id`). Để phục vụ công tác kiểm toán (Audit Trail) xem tài khoản nào đã chia sẻ hoặc truy cập trái phép, việc duy trì `person_id` (cho phép NULL đối với khách ngoài) là giải pháp cân bằng hoàn hảo giữa bảo mật và tính linh hoạt.
+- **Bảo vệ quyền riêng tư & Giảm thiểu ràng buộc**:
+  - Nhằm bảo đảm tính riêng tư của độc giả theo tiêu chuẩn thư viện hiện đại và cho phép độc giả truy cập nhanh chóng mà không bị theo dõi định danh cá nhân, hệ thống không lưu vết `person_id` trong nhật ký truy cập.
+  - Bảng `ACCESS_LOG` chỉ ghi nhận địa chỉ mạng `ip_address` của máy trạm gửi yêu cầu và mã tài liệu số `journal_resource_id`.
+
+### 5.7. Bỏ thuộc tính `access_timestamp` trong `ACCESS_LOG`
+- **Tối giản hóa bảng nhật ký**:
+  - Hệ thống loại bỏ trường `access_timestamp` cùng chỉ mục thời gian tương ứng. Bảng `ACCESS_LOG` được thu gọn tối đa thành cấu trúc siêu nhẹ gồm 3 cột: `log_id` (PK), `journal_resource_id` (INDEX), và `ip_address`.
+  - Trên giao diện Web: Bảng Access Log đồng bộ chỉ hiển thị 3 cột: Mã Log ID, Tài liệu số, và Địa chỉ IP Client.

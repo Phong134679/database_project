@@ -11,15 +11,16 @@ So với phiên bản khung cơ bản ban đầu, dự án đã được nâng c
 
 * **Tích hợp Web Client SPA & REST API Server thuần JDK**: Bổ sung giao diện Web trang đơn (HTML5, CSS3, Vanilla JavaScript) với 5 Tab nghiệp vụ trực quan, kết nối với backend thông qua máy chủ REST API siêu nhẹ sử dụng `com.sun.net.httpserver.HttpServer` có sẵn trong JDK 11 và thư viện `Gson 2.10.1`. Giữ trọn vẹn kiến trúc Java 11 + JDBC thuần, không phụ thuộc Spring Boot, Maven hay Gradle.
 * **Đảm bảo toàn vẹn giao dịch (ACID Transactions)**: Tái cấu trúc các Repository (`BorrowRepository`, `FineRepository`, `PaymentTransactionRepository`) và Service để dùng chung một `java.sql.Connection` khi thực thi các luồng liên bảng (Mượn sách: INSERT borrow + UPDATE copy; Trả sách: UPDATE borrow + UPDATE copy + INSERT fine; Trả góp: INSERT transaction + UPDATE fine) với `setAutoCommit(false)`, `commit()` và `rollback()`.
-* **Phân định Tài liệu số Mở (Open Access)**: Bổ sung cờ `is_public` cho bảng `DIGITAL_JOURNAL`, cho phép mọi bạn đọc kể cả khách vãng lai (`GUEST`) truy cập bài báo mở mà không bị chặn bản quyền.
+* **Phân định Tài liệu số Mở (Open Access) & Bãi bỏ thuộc tính `doi`**: Bổ sung cờ `is_public` cho bảng `DIGITAL_JOURNAL`, cho phép mọi bạn đọc kể cả khách vãng lai (`GUEST`) truy cập bài báo mở mà không bị chặn bản quyền. Đồng thời, đánh giá chuyên sâu và **loại bỏ hoàn toàn thuộc tính `doi`** khỏi `DIGITAL_JOURNAL` do độc giả truy cập trực tiếp bài báo qua liên kết URL/giao diện hệ thống mà không cần định danh độc lập DOI cho từng bản online, giúp hệ thống dễ dàng tiếp nhận các tài liệu số nội bộ (khóa luận, đồ án sinh viên, đề tài NCKH cấp trường).
+* **Bãi bỏ Chức năng Download & Tinh giản Bảng Nhật ký `ACCESS_LOG` (BR13 & FR08)**: Chuyển dịch toàn diện sang mô hình "Đọc trực tuyến" (Online Reader / In-browser Viewer) để bảo vệ bản quyền tri thức và loại bỏ thuộc tính `download_success`. Đồng thời, **bỏ theo dõi `person_id`** (chỉ ghi nhận địa chỉ mạng `ip_address` để bảo đảm tính riêng tư cho độc giả) và **bỏ thuộc tính `access_timestamp`**. Bảng `ACCESS_LOG` được tinh gọn tối đa thành cấu trúc 3 cột siêu nhẹ (`log_id`, `journal_resource_id`, `ip_address`), tối ưu hóa tốc độ ghi dữ liệu ở mức cao nhất.
 * **Tối ưu hóa CORS & Cache-Control**: Máy chủ API tự động cấu hình CORS header mở và cơ chế `Cache-Control: no-cache, no-store, must-revalidate`, ngăn ngừa lỗi cache mã nguồn cũ và hoạt động mượt mà trên mọi trình duyệt hiện đại (Brave, Chrome, Firefox, Edge).
 * **Tách bạch & Tối ưu luồng kết nối CSDL**: Tách riêng chức năng xác thực tài khoản MySQL Server và kết nối đến database cụ thể; bọc tập trung trong khối `try-catch`, tự động ném Exception khi gặp lỗi kết nối và yêu cầu người dùng khởi tạo thủ công nếu database trả về `null`.
 * **Bổ sung Modun Validation Chuyên biệt (`com.library.validation`)**: Phân tách toàn bộ logic kiểm tra dữ liệu và ràng buộc nghiệp vụ ra khỏi Service (gồm `DataValidator`, `MemberValidator`, `BorrowValidator`, `FineValidator`, `LicenseValidator`).
 * **Bổ sung Modun Exception Chuẩn hóa (`com.library.exception`)**: Xây dựng cây ngoại lệ kế thừa `RuntimeException`, trang bị mã lỗi nghiệp vụ riêng (`errorCode`) cho từng quy chế (BR01, BR02, BR04, BR05, BR10, BR11); bọc `SQLException` thành `DatabaseException` ném lên tầng Service.
-* **Bổ sung Bộ Kiểm thử Đơn vị (`com.library.test`)**: Cung cấp bộ test độc lập [`ValidationAndExceptionTest.java`](Project/src/com/library/test/ValidationAndExceptionTest.java) chạy 13 test cases tự động kiểm chứng toàn bộ ngoại lệ mà không phụ thuộc CSDL live.
+* **Bổ sung Bộ Kiểm thử Đơn vị (`com.library.test`)**: Cung cấp bộ test độc lập [`ValidationAndExceptionTest.java`](Project/src/com/library/test/ValidationAndExceptionTest.java) chạy 19 test cases tự động kiểm chứng toàn bộ ngoại lệ và thẩm định truy cập tài liệu số mà không phụ thuộc CSDL live.
 * **Hiện thực trọn vẹn 4 Validation Cases**: Hoàn thành 4 kịch bản kiểm thử nghiệp vụ theo SRS Phase 1 trên MySQL thật (phân quyền mượn sách BR01/BR05, kiểm soát bản quyền tài liệu số BR04/BR12/BR13, tự động sinh phạt trễ hạn FR05/BR02, và thanh toán trả góp tiền phạt FR06/BR11).
 * **Mở rộng kiến trúc MVC + Repository Pattern**: Hiện thực đầy đủ 15 Model POJOs, 10 Repositories (bổ sung `ResourceRepository` truy vấn tối ưu cho Web) và 4 Services bao quát toàn bộ 15 bảng dữ liệu trong CSDL.
-* **Tiện ích khởi tạo CSDL & Script khởi chạy**: Cung cấp công cụ [`DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java), script khởi chạy tự động [`start_server.sh`](Project/start_server.sh), chuẩn hóa classpath tương đối cho Eclipse và template cấu hình mẫu an toàn.
+* **Kịch bản Sinh Dữ liệu Lớn & Tiện ích khởi tạo CSDL**: Cung cấp kịch bản [`Project/seed_large_dataset.sql`](Project/seed_large_dataset.sql) sinh hàng nghìn dòng dữ liệu (5.000 log truy cập, 1.000 bản sao sách) để kiểm thử hiệu năng, công cụ [`DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java), script khởi chạy tự động [`start_server.sh`](Project/start_server.sh), chuẩn hóa classpath tương đối cho Eclipse và template cấu hình mẫu an toàn.
 
 ---
 
@@ -269,11 +270,11 @@ flowchart TD
   * Định nghĩa **15 bảng** chuẩn InnoDB, mã hóa UTF-8 MB4.
   * Hiện thực quan hệ kế thừa (Inheritance/Subtypes):
     * `PERSON` (Superclass) $\rightarrow$ `UNIVERSITY_MEMBER` & `EXTERNAL_AUTHOR` (Subclasses).
-    * `RESOURCE` (Superclass) $\rightarrow$ `PHYSICAL_BOOK` & `DIGITAL_JOURNAL` (Subclasses).
+    * `RESOURCE` (Superclass) $\rightarrow$ `PHYSICAL_BOOK` & `DIGITAL_JOURNAL` (Subclasses - `DIGITAL_JOURNAL` đã bãi bỏ `doi` để tinh giản, quản lý truy cập trực tiếp bằng URL và cờ `is_public`).
   * Các bảng quan hệ nhiều-nhiều (N:M): `AUTHOR_OF`, `RESOURCE_LICENSE`.
   * Nghiệp vụ mượn trả & tài chính: `BOOK_COPY`, `BORROW`, `FINE`, `PAYMENT_TRANSACTION`.
   * Phân quyền bản quyền tài liệu số: `LICENSE_PACKAGE`, `GRANTED_LICENSE`.
-  * **Tối ưu hiệu năng ghi (Ràng buộc BR13)**: Bảng `ACCESS_LOG` tách rời Foreign Key khỏi Master tables, dùng Independent Indexes để tối ưu tốc độ ghi log tần suất cao.
+  * **Tối ưu hiệu năng ghi (Ràng buộc BR13)**: Bảng `ACCESS_LOG` tách rời Foreign Key khỏi Master tables, dùng Independent Indexes để tối ưu tốc độ ghi log tần suất cao; đã loại bỏ `person_id`, `access_timestamp` và `download_success` (chỉ ghi nhận `ip_address` và `journal_resource_id` phục vụ kiểm toán đọc trực tuyến).
 * [`Project/sample_data.sql`](Project/sample_data.sql):
   * Dữ liệu mẫu kiểm thử bao quát toàn bộ 15 bảng và 4 kịch bản nghiệp vụ (Validation Cases): Phân quyền mượn sách theo vai trò người dùng, kiểm soát hạn bản quyền số, tự động phạt trễ hạn, và thanh toán trả góp tiền phạt.
 
@@ -289,7 +290,7 @@ Gồm **15 lớp POJO** ánh xạ 1:1 với cấu trúc bảng trong MySQL, đ�
 | | [`ExternalAuthor.java`](Project/src/com/library/model/ExternalAuthor.java) | Kế thừa `Person`, đại diện cho Tác giả bên ngoài |
 | **Tài nguyên** | [`Resource.java`](Project/src/com/library/model/Resource.java) | Superclass danh mục tài nguyên chung |
 | | [`PhysicalBook.java`](Project/src/com/library/model/PhysicalBook.java) | Kế thừa `Resource`, đại diện cho Sách in |
-| | [`DigitalJournal.java`](Project/src/com/library/model/DigitalJournal.java) | Kế thừa `Resource`, đại diện cho Tạp chí / Bài báo số |
+| | [`DigitalJournal.java`](Project/src/com/library/model/DigitalJournal.java) | Kế thừa `Resource`, đại diện cho Tạp chí / Bài báo số (đã bãi bỏ `doi`, quản lý `url`, `format`, `file_size`, `is_public`) |
 | | [`BookCopy.java`](Project/src/com/library/model/BookCopy.java) | Bản sao vật lý của sách kèm mã vạch và trạng thái |
 | **Bản quyền** | [`LicensePackage.java`](Project/src/com/library/model/LicensePackage.java) | Danh mục các gói bản quyền tài liệu số |
 | | [`GrantedLicense.java`](Project/src/com/library/model/GrantedLicense.java) | Quyền truy cập gói tài liệu cấp cho người dùng |
@@ -298,7 +299,7 @@ Gồm **15 lớp POJO** ánh xạ 1:1 với cấu trúc bảng trong MySQL, đ�
 | **Mượn & Phạt** | [`Borrow.java`](Project/src/com/library/model/Borrow.java) | Thông tin giao dịch mượn trả sách |
 | | [`Fine.java`](Project/src/com/library/model/Fine.java) | Phiếu phạt phát sinh khi vi phạm quy chế |
 | | [`PaymentTransaction.java`](Project/src/com/library/model/PaymentTransaction.java) | Lịch sử các đợt thanh toán tiền phạt |
-| **Nhật ký** | [`AccessLog.java`](Project/src/com/library/model/AccessLog.java) | Lịch sử truy cập và tải tài liệu số |
+| **Nhật ký** | [`AccessLog.java`](Project/src/com/library/model/AccessLog.java) | Lịch sử truy cập tài liệu số (tinh giản chỉ lưu `log_id`, `journal_resource_id`, `ip_address`) |
 
 ---
 
@@ -323,10 +324,10 @@ Hệ thống hiện thực đầy đủ **9 lớp Repository** tương tác tr�
 * [`PaymentTransactionRepository.java`](Project/src/com/library/repository/PaymentTransactionRepository.java): Lưu các lần thanh toán trả góp vào `PAYMENT_TRANSACTION`, tính tổng lũy kế đã nộp bằng `COALESCE(SUM(amount_paid), 0.00)`.
 * [`PersonRepository.java`](Project/src/com/library/repository/PersonRepository.java): Quản lý bảng cha `PERSON`, tra cứu theo `person_id`, `ssn` và xác định vai trò (`person_type`).
 * [`UniversityMemberRepository.java`](Project/src/com/library/repository/UniversityMemberRepository.java): Quản lý bảng con `UNIVERSITY_MEMBER`, liên kết với `PERSON` để lấy thông tin chi tiết sinh viên/giảng viên.
-* [`DigitalJournalRepository.java`](Project/src/com/library/repository/DigitalJournalRepository.java): Quản lý tài liệu số `DIGITAL_JOURNAL` kết hợp bảng cha `RESOURCE` (DOI, file size, URL, định dạng).
+* [`DigitalJournalRepository.java`](Project/src/com/library/repository/DigitalJournalRepository.java): Quản lý tài liệu số `DIGITAL_JOURNAL` kết hợp bảng cha `RESOURCE` (file size, URL, định dạng, trạng thái công khai; đã loại bỏ hoàn toàn `doi`).
 * [`LicensePackageRepository.java`](Project/src/com/library/repository/LicensePackageRepository.java): Quản lý các gói bản quyền tài liệu số (`LICENSE_PACKAGE`) và liên kết `RESOURCE_LICENSE`.
 * [`GrantedLicenseRepository.java`](Project/src/com/library/repository/GrantedLicenseRepository.java): Quản lý cấp phép `GRANTED_LICENSE`, truy vấn kiểm tra quyền đọc tài liệu số còn hạn hay không (`hasActiveLicenseForJournal`).
-* [`AccessLogRepository.java`](Project/src/com/library/repository/AccessLogRepository.java): Lưu nhật ký truy cập vào bảng `ACCESS_LOG` với kiến trúc Decoupled Foreign Key tối ưu hiệu năng ghi (BR13).
+* [`AccessLogRepository.java`](Project/src/com/library/repository/AccessLogRepository.java): Lưu nhật ký truy cập vào bảng `ACCESS_LOG` với kiến trúc Decoupled Foreign Key tối ưu hiệu năng ghi (BR13) chỉ lưu mã tài liệu số và IP client.
 
 ---
 
@@ -349,8 +350,8 @@ Hệ thống hiện thực đầy đủ **4 lớp Service** xử lý logic nghi�
   * `getRemainingBalance(int fineId)` & `getPaymentHistory(int fineId)`: Theo dõi công nợ và lịch sử thanh toán.
 * [`DigitalJournalService.java`](Project/src/com/library/service/DigitalJournalService.java):
   * **Hiện thực Test 02 & Ràng buộc BR04, BR12, BR13, FR07, FR08**:
-    * `accessDigitalJournal(personId, journalId, ip, accessDate)`: Kiểm tra xem độc giả có sở hữu gói bản quyền còn hiệu lực cho tài liệu số này không. Nếu hết hạn $\rightarrow$ Chặn truy cập; nếu còn hạn $\rightarrow$ Cấp quyền tải file.
-    * Tự động ghi nhận thông tin truy cập vào `ACCESS_LOG` (`download_success = true/false`, IP, thời gian).
+    * `accessDigitalJournal(personId, journalId, ip, accessDate)`: Kiểm tra xem độc giả có sở hữu gói bản quyền còn hiệu lực cho tài liệu số này không (hoặc là tài liệu Open Access/Tác giả). Cấp quyền đọc trực tuyến (Online Reader), bãi bỏ chức năng download.
+    * Tự động ghi nhận thông tin truy cập vào `ACCESS_LOG` chỉ gồm `journal_resource_id` và `ip_address` (không theo dõi `person_id`, không ghi nhận `access_timestamp`).
 
 ---
 
@@ -396,7 +397,7 @@ Bóc tách toàn bộ logic kiểm tra ra khỏi tầng Service:
   * Khởi tạo toàn bộ Repositories, Services và Controller.
   * Thực thi kịch bản kiểm thử toàn diện cả **4 Validation Cases** trực tiếp trên cơ sở dữ liệu thật và in log kết quả trực quan trên Console.
 * [`ValidationAndExceptionTest.java`](Project/src/com/library/test/ValidationAndExceptionTest.java):
-  * Bộ kiểm thử Unit Test độc lập chạy 13 kịch bản kiểm thử bao phủ toàn bộ các trường hợp ném ngoại lệ và kiểm tra hợp lệ của hệ thống.
+  * Bộ kiểm thử Unit Test độc lập chạy 19 kịch bản kiểm thử bao phủ toàn bộ các trường hợp ném ngoại lệ, thẩm định quyền đọc tài liệu số, kiểm tra đặc quyền tác giả và kiểm tra hợp lệ của hệ thống.
 
 ---
 

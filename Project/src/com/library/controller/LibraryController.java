@@ -157,8 +157,8 @@ public class LibraryController {
         }
 
         for (DigitalJournal dj : list) {
-            System.out.println(String.format("ID: %d | Title: %s | Topic: %s | DOI: %s | Format: %s (%d KB)",
-                    dj.getResourceId(), dj.getTitle(), dj.getTopic(), dj.getDoi(), dj.getFormat(), dj.getFileSize()));
+            System.out.println(String.format("ID: %d | Title: %s | Topic: %s | Format: %s (%d KB)",
+                    dj.getResourceId(), dj.getTitle(), dj.getTopic(), dj.getFormat(), dj.getFileSize()));
         }
     }
 
@@ -194,10 +194,8 @@ public class LibraryController {
         }
 
         for (AccessLog log : logs) {
-            String status = log.isDownloadSuccess() ? "SUCCESS" : "BLOCKED";
-            System.out.println(String.format("Log #%d | Person: %d | Journal: %d | Time: %s | IP: %s | Status: %s",
-                    log.getLogId(), log.getPersonId(), log.getJournalResourceId(),
-                    log.getAccessTimestamp(), log.getIpAddress(), status));
+            System.out.println(String.format("Log #%d | Journal: %d | IP: %s",
+                    log.getLogId(), log.getJournalResourceId(), log.getIpAddress()));
         }
     }
 

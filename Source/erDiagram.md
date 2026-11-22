@@ -65,10 +65,10 @@ erDiagram
 
     DIGITAL_JOURNAL {
         int resource_id PK, FK
-        varchar(50) doi
         varchar(250) url
         int file_size
         varchar(10) format
+        boolean is_public
     }
 
     BOOK_COPY {
@@ -104,11 +104,8 @@ erDiagram
 
     ACCESS_LOG {
         bigint log_id PK
-        int person_id FK
         int journal_resource_id FK
-        timestamp access_timestamp
         varchar(45) ip_address
-        boolean download_success
     }
 
     %% Relationships
@@ -138,4 +135,3 @@ erDiagram
     FINE ||--o{ PAYMENT_TRANSACTION : "paid via"
 
     DIGITAL_JOURNAL ||--o{ ACCESS_LOG : "has"
-    PERSON ||--o{ ACCESS_LOG : "creates"

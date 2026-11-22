@@ -26,7 +26,7 @@ public class ResourceRepository {
         List<Map<String, Object>> list = new ArrayList<>();
         String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
                      "       pb.shelf_location, " +
-                     "       dj.doi, dj.url, dj.file_size, dj.format, dj.is_public, " +
+                     "       dj.url, dj.file_size, dj.format, dj.is_public, " +
                      "       COUNT(bc.copy_id) AS total_copies, " +
                      "       SUM(CASE WHEN bc.availability_status = 'Available' THEN 1 ELSE 0 END) AS available_copies " +
                      "FROM RESOURCE r " +
@@ -34,7 +34,7 @@ public class ResourceRepository {
                      "LEFT JOIN DIGITAL_JOURNAL dj ON r.resource_id = dj.resource_id " +
                      "LEFT JOIN BOOK_COPY bc ON r.resource_id = bc.resource_id " +
                      "GROUP BY r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "         pb.shelf_location, dj.doi, dj.url, dj.file_size, dj.format, dj.is_public " +
+                     "         pb.shelf_location, dj.url, dj.file_size, dj.format, dj.is_public " +
                      "ORDER BY r.resource_id ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
@@ -56,7 +56,6 @@ public class ResourceRepository {
                     map.put("totalCopies", rs.getInt("total_copies"));
                     map.put("availableCopies", rs.getInt("available_copies"));
                 } else if ("DIGITAL_JOURNAL".equalsIgnoreCase(type)) {
-                    map.put("doi", rs.getString("doi"));
                     map.put("url", rs.getString("url"));
                     map.put("fileSize", rs.getInt("file_size"));
                     map.put("format", rs.getString("format"));
@@ -79,7 +78,7 @@ public class ResourceRepository {
         List<Map<String, Object>> list = new ArrayList<>();
         String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
                      "       pb.shelf_location, " +
-                     "       dj.doi, dj.url, dj.file_size, dj.format, " +
+                     "       dj.url, dj.file_size, dj.format, " +
                      "       COUNT(bc.copy_id) AS total_copies, " +
                      "       SUM(CASE WHEN bc.availability_status = 'Available' THEN 1 ELSE 0 END) AS available_copies " +
                      "FROM RESOURCE r " +
@@ -87,7 +86,7 @@ public class ResourceRepository {
                      "LEFT JOIN DIGITAL_JOURNAL dj ON r.resource_id = dj.resource_id " +
                      "LEFT JOIN BOOK_COPY bc ON r.resource_id = bc.resource_id " +
                      "GROUP BY r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "         pb.shelf_location, dj.doi, dj.url, dj.file_size, dj.format " +
+                     "         pb.shelf_location, dj.url, dj.file_size, dj.format " +
                      "ORDER BY r.resource_id ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
@@ -109,7 +108,6 @@ public class ResourceRepository {
                     map.put("totalCopies", rs.getInt("total_copies"));
                     map.put("availableCopies", rs.getInt("available_copies"));
                 } else if ("DIGITAL_JOURNAL".equalsIgnoreCase(type)) {
-                    map.put("doi", rs.getString("doi"));
                     map.put("url", rs.getString("url"));
                     map.put("fileSize", rs.getInt("file_size"));
                     map.put("format", rs.getString("format"));

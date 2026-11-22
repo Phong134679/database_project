@@ -120,19 +120,15 @@ function renderResources(list) {
           ? '<span class="badge badge-success">Tạp chí số (Open Access)</span>'
           : '<span class="badge badge-warning">Tạp chí số (Cần License)</span>');
 
-    const identifier = isBook
-      ? `<span class="badge badge-secondary">Sách in</span>`
-      : `DOI: <strong>${r.doi || '-'}</strong>`;
-
     const extraInfo = isBook
       ? `Kệ: ${r.shelfLocation || '-'}`
       : `${r.format || 'PDF'} (${r.fileSize || 0} KB)`;
 
-    const copyStats = isBook
+    const actionCol = isBook
       ? `<span class="badge ${r.availableCopies > 0 ? 'badge-success' : 'badge-danger'}">${r.availableCopies} / ${r.totalCopies} sẵn sàng</span>`
       : (r.isPublic
-          ? `<a href="${r.url}" target="_blank" class="btn btn-success btn-sm" style="text-decoration: none;">⬇️ Mở tệp công khai</a>`
-          : `<a href="${r.url}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration: none;">Xem link</a>`);
+          ? `<a href="${r.url}" target="_blank" class="btn btn-success btn-sm" style="text-decoration: none;">📖 Đọc trực tuyến</a>`
+          : `<a href="${r.url}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration: none;">📖 Xem trực tuyến</a>`);
 
     return `
       <tr>
@@ -141,9 +137,8 @@ function renderResources(list) {
         <td>${typeBadge}</td>
         <td>${r.topic || '-'}</td>
         <td>${formatDate(r.publishDate)}</td>
-        <td>${identifier}</td>
         <td>${extraInfo}</td>
-        <td>${copyStats}</td>
+        <td>${actionCol}</td>
       </tr>
     `;
   }).join('');
@@ -157,9 +152,7 @@ function filterResources() {
     const matchType = (typeFilter === 'ALL') || (r.resourceType === typeFilter);
     const matchQuery = !query ||
       (r.title && r.title.toLowerCase().includes(query)) ||
-      (r.topic && r.topic.toLowerCase().includes(query)) ||
-      (r.isbn && r.isbn.toLowerCase().includes(query)) ||
-      (r.doi && r.doi.toLowerCase().includes(query));
+      (r.topic && r.topic.toLowerCase().includes(query));
     return matchType && matchQuery;
   });
 
@@ -540,13 +533,14 @@ function populateJournalDropdown() {
 
 async function handleJournalAccessSubmit(e) {
   e.preventDefault();
-  const personId = parseInt(document.getElementById('accessPersonSelect').value);
+  const personSelect = document.getElementById('accessPersonSelect');
+  const personId = personSelect && personSelect.value ? parseInt(personSelect.value) : null;
   const journalId = parseInt(document.getElementById('accessJournalSelect').value);
-  const ipAddress = document.getElementById('accessIpInput').value.trim();
+  const ipAddress = document.getElementById('accessIpInput').value.trim() || '127.0.0.1';
   const accessDate = document.getElementById('accessDateInput').value;
 
-  if (!personId || !journalId) {
-    alert("Vui lòng chọn độc giả và tài liệu số.");
+  if (!journalId) {
+    alert("Vui lòng chọn tài liệu số.");
     return;
   }
 
@@ -572,11 +566,11 @@ async function handleJournalAccessSubmit(e) {
             <h4 style="font-weight: 700; margin-bottom: 4px;">✅ CẤP QUYỀN TRUY CẬP THÀNH CÔNG (BR04 / BR12 VALIDATED)</h4>
             <p>${data.message}</p>
             <p style="margin-top: 8px;">
-              Tài liệu: <strong>${data.title}</strong> (DOI: <code>${data.doi}</code>)<br>
+              Tài liệu: <strong>${data.title}</strong><br>
               Định dạng: <strong>${data.format}</strong> (${data.fileSize} KB)
             </p>
             <p style="margin-top: 10px;">
-              <a href="${data.url}" target="_blank" class="btn btn-success btn-sm" style="text-decoration: none;">⬇️ Tải xuống toàn văn (Download URL)</a>
+              <a href="${data.url}" target="_blank" class="btn btn-success btn-sm" style="text-decoration: none;">📖 Đọc trực tuyến (Online Reader)</a>
             </p>
           </div>
         </div>
@@ -602,43 +596,36 @@ async function handleJournalAccessSubmit(e) {
     resultBox.innerHTML = `<div class="alert alert-danger">Lỗi kết nối kiểm tra bản quyền: ${err.message}</div>`;
   } finally {
     btn.disabled = false;
-    btn.innerText = "🔓 Thẩm định quyền & Đọc tài liệu";
+    btn.innerText = "📖 Thẩm định quyền & Đọc trực tuyến";
   }
 }
 
 async function loadAccessLogs() {
   const tbody = document.getElementById('accessLogsBody');
-  tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Đang tải nhật ký...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Đang tải nhật ký...</td></tr>';
   try {
     const res = await fetch(`${API_BASE}/api/access-logs`);
     if (!res.ok) throw new Error("HTTP " + res.status);
     state.accessLogs = await res.json();
     renderAccessLogs(state.accessLogs);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="6" class="empty-state" style="color: var(--danger);">Lỗi tải nhật ký: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="3" class="empty-state" style="color: var(--danger);">Lỗi tải nhật ký: ${err.message}</td></tr>`;
   }
 }
 
 function renderAccessLogs(list) {
   const tbody = document.getElementById('accessLogsBody');
   if (!list || list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Chưa có bản ghi nhật ký truy cập nào.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Chưa có bản ghi nhật ký truy cập nào.</td></tr>';
     return;
   }
 
   tbody.innerHTML = list.map(l => {
-    const statusBadge = l.downloadSuccess
-      ? '<span class="badge badge-success">Thành công (Granted)</span>'
-      : '<span class="badge badge-danger">Bị chặn (Blocked)</span>';
-
     return `
       <tr>
         <td><strong>#${l.logId}</strong></td>
-        <td>${l.accessTimestamp ? l.accessTimestamp.replace('T', ' ') : '-'}</td>
-        <td><strong>${l.personName || 'Độc giả #' + l.personId}</strong> (ID: ${l.personId})</td>
-        <td>${l.journalTitle || 'Tài nguyên #' + l.journalResourceId}</td>
+        <td>${l.journalTitle ? `<strong>${l.journalTitle}</strong> (ID: ${l.journalResourceId})` : 'Tài nguyên #' + l.journalResourceId}</td>
         <td><code>${l.ipAddress || '-'}</code></td>
-        <td>${statusBadge}</td>
       </tr>
     `;
   }).join('');

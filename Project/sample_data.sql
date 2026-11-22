@@ -75,12 +75,12 @@ INSERT INTO PHYSICAL_BOOK (resource_id, shelf_location) VALUES
 (2, 'Kệ B2-12-01'),
 (7, 'Kệ C1-05-02');
 
--- Tạp chí, bài báo điện tử
-INSERT INTO DIGITAL_JOURNAL (resource_id, doi, url, file_size, format, is_public) VALUES
-(3, '10.1109/TPAMI.2025.1001', 'https://dl.library.edu/journals/deep-learning-2025.pdf', 4096, 'PDF', FALSE),
-(4, '10.1145/3456789.3456790', 'https://dl.library.edu/journals/acm-distributed-tx.pdf', 2048, 'PDF', TRUE),
-(5, '10.1007/978-0-13-449416-6', 'https://dl.library.edu/journals/clean-architecture-2024.pdf', 5120, 'PDF', FALSE),
-(6, '10.1109/TKDE.2025.2006', 'https://dl.library.edu/journals/cloud-db-scaling-2025.pdf', 3584, 'PDF', FALSE);
+-- Tạp chí, bài báo điện tử (Đã bỏ doi)
+INSERT INTO DIGITAL_JOURNAL (resource_id, url, file_size, format, is_public) VALUES
+(3, 'https://dl.library.edu/journals/deep-learning-2025.pdf', 4096, 'PDF', FALSE),
+(4, 'https://dl.library.edu/journals/acm-distributed-tx.pdf', 2048, 'PDF', TRUE),
+(5, 'https://dl.library.edu/journals/clean-architecture-2024.pdf', 5120, 'PDF', FALSE),
+(6, 'https://dl.library.edu/journals/cloud-db-scaling-2025.pdf', 3584, 'PDF', FALSE);
 
 -- =============================================================================
 -- 5. INSERT BOOK_COPY (Bản sao vật lý của sách)
@@ -151,8 +151,8 @@ INSERT INTO PAYMENT_TRANSACTION (transaction_id, fine_id, amount_paid, payment_d
 
 -- =============================================================================
 -- 11. INSERT ACCESS_LOG (Nhật ký truy cập tài nguyên số)
--- Ghi nhận lượt tải thành công (có bản quyền) và thất bại (hết hạn bản quyền)
+-- Chỉ lưu vết journal_resource_id và ip_address (bỏ person_id, access_timestamp, download)
 -- =============================================================================
-INSERT INTO ACCESS_LOG (log_id, person_id, journal_resource_id, access_timestamp, ip_address, download_success) VALUES
-(1, 1, 3, '2026-10-10 14:15:20', '192.168.1.50', TRUE),
-(2, 4, 3, '2026-10-12 09:00:00', '192.168.1.100', FALSE);
+INSERT INTO ACCESS_LOG (log_id, journal_resource_id, ip_address) VALUES
+(1, 3, '192.168.1.50'),
+(2, 3, '192.168.1.100');

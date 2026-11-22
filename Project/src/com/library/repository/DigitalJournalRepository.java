@@ -14,6 +14,7 @@ import java.util.List;
 
 /**
  * Repository class handling MySQL data persistence for DIGITAL_JOURNAL subclass.
+ * Đã bãi bỏ thuộc tính 'doi'.
  */
 public class DigitalJournalRepository {
 
@@ -22,7 +23,7 @@ public class DigitalJournalRepository {
      */
     public DigitalJournal findById(int resourceId) {
         String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "       dj.doi, dj.url, dj.file_size, dj.format, dj.is_public " +
+                     "       dj.url, dj.file_size, dj.format, dj.is_public " +
                      "FROM DIGITAL_JOURNAL dj " +
                      "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
                      "WHERE dj.resource_id = ?";
@@ -44,7 +45,7 @@ public class DigitalJournalRepository {
 
     private DigitalJournal findByIdLegacy(int resourceId) {
         String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "       dj.doi, dj.url, dj.file_size, dj.format " +
+                     "       dj.url, dj.file_size, dj.format " +
                      "FROM DIGITAL_JOURNAL dj " +
                      "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
                      "WHERE dj.resource_id = ?";
@@ -84,36 +85,12 @@ public class DigitalJournalRepository {
     }
 
     /**
-     * Finds a DigitalJournal by its unique DOI identifier.
-     */
-    public DigitalJournal findByDoi(String doi) {
-        String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "       dj.doi, dj.url, dj.file_size, dj.format, dj.is_public " +
-                     "FROM DIGITAL_JOURNAL dj " +
-                     "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
-                     "WHERE dj.doi = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, doi);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return mapRowToJournal(rs);
-                }
-            }
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi tra cứu tài liệu số theo DOI " + doi + ": " + e.getMessage(), e);
-        }
-        return null;
-    }
-
-    /**
      * Retrieves all DigitalJournal records.
      */
     public List<DigitalJournal> findAll() {
         List<DigitalJournal> list = new ArrayList<>();
         String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "       dj.doi, dj.url, dj.file_size, dj.format, dj.is_public " +
+                     "       dj.url, dj.file_size, dj.format, dj.is_public " +
                      "FROM DIGITAL_JOURNAL dj " +
                      "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
                      "ORDER BY r.resource_id ASC";
@@ -134,7 +111,7 @@ public class DigitalJournalRepository {
     private List<DigitalJournal> findAllLegacy() {
         List<DigitalJournal> list = new ArrayList<>();
         String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "       dj.doi, dj.url, dj.file_size, dj.format " +
+                     "       dj.url, dj.file_size, dj.format " +
                      "FROM DIGITAL_JOURNAL dj " +
                      "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
                      "ORDER BY r.resource_id ASC";
@@ -166,7 +143,6 @@ public class DigitalJournalRepository {
                 pDate != null ? pDate.toLocalDate() : null,
                 rs.getString("topic"),
                 rs.getString("resource_type"),
-                rs.getString("doi"),
                 rs.getString("url"),
                 rs.getInt("file_size"),
                 rs.getString("format"),

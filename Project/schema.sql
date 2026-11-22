@@ -95,9 +95,9 @@ CREATE TABLE PHYSICAL_BOOK (
 ) ENGINE = InnoDB;
 
 -- Bảng con: DIGITAL_JOURNAL (Bài báo, tạp chí điện tử)
+-- Đã loại bỏ thuộc tính 'doi' do người dùng chỉ cần truy cập qua url/hệ thống mà không cần định danh DOI cho từng bản online
 CREATE TABLE DIGITAL_JOURNAL (
     resource_id INT PRIMARY KEY,
-    doi VARCHAR(100) NOT NULL UNIQUE,
     url VARCHAR(250),
     file_size INT COMMENT 'Kích thước file tính theo KB/MB',
     format VARCHAR(10) COMMENT 'Định dạng PDF, EPUB, XML',
@@ -233,19 +233,15 @@ CREATE TABLE PAYMENT_TRANSACTION (
 -- =============================================================================
 -- 6. NHẬT KÝ TRUY CẬP TÀI NGUYÊN SỐ (ACCESS_LOG)
 -- Ràng buộc BR13: Tách rời Foreign Key để tối ưu hiệu năng ghi tốc độ cao.
--- Sử dụng Index độc lập để truy vấn thay vì ràng buộc Database Engine FK.
+-- Đã loại bỏ person_id (không theo dõi cá nhân, chỉ lưu ip_address),
+-- loại bỏ access_timestamp, và loại bỏ thuộc tính download (chỉ đọc trực tuyến).
 -- =============================================================================
 
 CREATE TABLE ACCESS_LOG (
     log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    person_id INT,
     journal_resource_id INT,
-    access_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ip_address VARCHAR(45),
-    download_success BOOLEAN NOT NULL DEFAULT TRUE,
-    INDEX idx_access_log_person (person_id),
-    INDEX idx_access_log_journal (journal_resource_id),
-    INDEX idx_access_log_timestamp (access_timestamp)
+    INDEX idx_access_log_journal (journal_resource_id)
 ) ENGINE = InnoDB;
 
 -- =============================================================================
