@@ -84,10 +84,9 @@ CREATE TABLE RESOURCE (
     resource_type ENUM('PHYSICAL_BOOK', 'DIGITAL_JOURNAL') NOT NULL
 ) ENGINE = InnoDB;
 
--- Bảng con: PHYSICAL_BOOK (Sách in truyền thống)
+-- Bảng con: PHYSICAL_BOOK (Sách in truyền thống - Đã bãi bỏ ISBN)
 CREATE TABLE PHYSICAL_BOOK (
     resource_id INT PRIMARY KEY,
-    isbn VARCHAR(20) NOT NULL UNIQUE,
     shelf_location VARCHAR(50),
     CONSTRAINT fk_physical_book_resource
         FOREIGN KEY (resource_id) REFERENCES RESOURCE(resource_id)
@@ -110,12 +109,11 @@ CREATE TABLE DIGITAL_JOURNAL (
 ) ENGINE = InnoDB;
 
 -- Bảng bản sao sách: BOOK_COPY (Mỗi cuốn sách vật lý có thể có nhiều bản sao)
+-- Đã loại bỏ condition_status, barcode; copy_id được đánh theo quy tắc '<resource_id>_<index>' (kiểu VARCHAR)
 CREATE TABLE BOOK_COPY (
-    copy_id INT AUTO_INCREMENT PRIMARY KEY,
+    copy_id VARCHAR(30) PRIMARY KEY,
     resource_id INT NOT NULL,
-    barcode VARCHAR(50) NOT NULL UNIQUE,
-    condition_status VARCHAR(50) NOT NULL DEFAULT 'Good',
-    availability_status VARCHAR(20) NOT NULL DEFAULT 'Available',
+    availability_status ENUM('Available', 'Borrowed') NOT NULL DEFAULT 'Available',
     CONSTRAINT fk_book_copy_physical_book
         FOREIGN KEY (resource_id) REFERENCES PHYSICAL_BOOK(resource_id)
         ON DELETE RESTRICT
@@ -192,7 +190,7 @@ CREATE TABLE AUTHOR_OF (
 CREATE TABLE BORROW (
     borrow_id INT AUTO_INCREMENT PRIMARY KEY,
     member_person_id INT NOT NULL,
-    copy_id INT NOT NULL,
+    copy_id VARCHAR(30) NOT NULL,
     borrow_date DATE NOT NULL,
     due_date DATE NOT NULL,
     return_date DATE DEFAULT NULL,

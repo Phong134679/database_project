@@ -1,2 +1,8 @@
 Cần nắm rõ việc đặt khóa có ý nghĩa và giúp phân biệt thế nào
 Vài nghìn dòng dữ liệu để test
+
+
+
+Đánh giá chức năng của thuộc tính 'doi', bỏ nếu có thể vì người dùng chỉ cần truy cập và digital_journal mà không cần định danh cho từng bản online của mỗi resource tương ứng
+Bỏ chức năng download cho digital_journal, vì thế bỏ luôn thuộc tính tương ứng ở access_log
+Bỏ theo dõi person_id của người truy cập digital_journal, chỉ ghi nhận ip_adress

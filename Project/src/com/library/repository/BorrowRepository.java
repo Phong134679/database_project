@@ -28,7 +28,7 @@ public class BorrowRepository {
                      "VALUES (?, ?, ?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, borrow.getMemberPersonId());
-            ps.setInt(2, borrow.getCopyId());
+            ps.setString(2, borrow.getCopyId());
             ps.setDate(3, borrow.getBorrowDate() != null ? Date.valueOf(borrow.getBorrowDate()) : Date.valueOf(LocalDate.now()));
             ps.setDate(4, borrow.getDueDate() != null ? Date.valueOf(borrow.getDueDate()) : null);
             if (borrow.getReturnDate() != null) {
@@ -133,7 +133,7 @@ public class BorrowRepository {
                      "due_date = ?, return_date = ? WHERE borrow_id = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, borrow.getMemberPersonId());
-            ps.setInt(2, borrow.getCopyId());
+            ps.setString(2, borrow.getCopyId());
             ps.setDate(3, borrow.getBorrowDate() != null ? Date.valueOf(borrow.getBorrowDate()) : null);
             ps.setDate(4, borrow.getDueDate() != null ? Date.valueOf(borrow.getDueDate()) : null);
             if (borrow.getReturnDate() != null) {
@@ -198,10 +198,10 @@ public class BorrowRepository {
     /**
      * Checks if a book copy is currently available using an active Connection.
      */
-    public boolean isCopyAvailable(Connection conn, int copyId) {
+    public boolean isCopyAvailable(Connection conn, String copyId) {
         String sql = "SELECT availability_status FROM BOOK_COPY WHERE copy_id = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, copyId);
+            ps.setString(1, copyId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return "Available".equalsIgnoreCase(rs.getString("availability_status"));
@@ -216,7 +216,7 @@ public class BorrowRepository {
     /**
      * Checks if a book copy is currently available for borrowing.
      */
-    public boolean isCopyAvailable(int copyId) {
+    public boolean isCopyAvailable(String copyId) {
         try (Connection conn = DatabaseConnection.getConnection()) {
             return isCopyAvailable(conn, copyId);
         } catch (SQLException e) {
@@ -224,14 +224,22 @@ public class BorrowRepository {
         }
     }
 
+    public boolean isCopyAvailable(Connection conn, int copyId) {
+        return isCopyAvailable(conn, String.valueOf(copyId));
+    }
+
+    public boolean isCopyAvailable(int copyId) {
+        return isCopyAvailable(String.valueOf(copyId));
+    }
+
     /**
      * Updates the availability status of a book copy in BOOK_COPY using an active Connection.
      */
-    public void updateCopyAvailability(Connection conn, int copyId, String status) {
+    public void updateCopyAvailability(Connection conn, String copyId, String status) {
         String sql = "UPDATE BOOK_COPY SET availability_status = ? WHERE copy_id = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, status);
-            ps.setInt(2, copyId);
+            ps.setString(2, copyId);
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new DatabaseException("Lỗi khi cập nhật trạng thái bản sao ID " + copyId + ": " + e.getMessage(), e);
@@ -241,12 +249,20 @@ public class BorrowRepository {
     /**
      * Updates the availability status of a book copy in BOOK_COPY.
      */
-    public void updateCopyAvailability(int copyId, String status) {
+    public void updateCopyAvailability(String copyId, String status) {
         try (Connection conn = DatabaseConnection.getConnection()) {
             updateCopyAvailability(conn, copyId, status);
         } catch (SQLException e) {
             throw new DatabaseException("Lỗi kết nối khi cập nhật trạng thái bản sao: " + e.getMessage(), e);
         }
+    }
+
+    public void updateCopyAvailability(Connection conn, int copyId, String status) {
+        updateCopyAvailability(conn, String.valueOf(copyId), status);
+    }
+
+    public void updateCopyAvailability(int copyId, String status) {
+        updateCopyAvailability(String.valueOf(copyId), status);
     }
 
     /**
@@ -297,7 +313,7 @@ public class BorrowRepository {
     public List<java.util.Map<String, Object>> findAllBorrowsDetailed() {
         List<java.util.Map<String, Object>> list = new ArrayList<>();
         String sql = "SELECT b.borrow_id, b.member_person_id, p.name AS member_name, p.person_type, " +
-                     "       b.copy_id, bc.barcode, r.title AS book_title, " +
+                     "       b.copy_id, r.title AS book_title, " +
                      "       b.borrow_date, b.due_date, b.return_date " +
                      "FROM BORROW b " +
                      "JOIN PERSON p ON b.member_person_id = p.person_id " +
@@ -313,8 +329,7 @@ public class BorrowRepository {
                 map.put("memberPersonId", rs.getInt("member_person_id"));
                 map.put("memberName", rs.getString("member_name"));
                 map.put("memberType", rs.getString("person_type"));
-                map.put("copyId", rs.getInt("copy_id"));
-                map.put("barcode", rs.getString("barcode"));
+                map.put("copyId", rs.getString("copy_id"));
                 map.put("bookTitle", rs.getString("book_title"));
                 Date bDate = rs.getDate("borrow_date");
                 Date dDate = rs.getDate("due_date");
@@ -338,8 +353,8 @@ public class BorrowRepository {
      */
     public List<java.util.Map<String, Object>> findAllCopiesDetailed() {
         List<java.util.Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT bc.copy_id, bc.resource_id, r.title AS book_title, bc.barcode, " +
-                     "       bc.condition_status, bc.availability_status " +
+        String sql = "SELECT bc.copy_id, bc.resource_id, r.title AS book_title, " +
+                     "       bc.availability_status " +
                      "FROM BOOK_COPY bc " +
                      "JOIN RESOURCE r ON bc.resource_id = r.resource_id " +
                      "ORDER BY bc.copy_id ASC";
@@ -348,11 +363,9 @@ public class BorrowRepository {
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
-                map.put("copyId", rs.getInt("copy_id"));
+                map.put("copyId", rs.getString("copy_id"));
                 map.put("resourceId", rs.getInt("resource_id"));
                 map.put("bookTitle", rs.getString("book_title"));
-                map.put("barcode", rs.getString("barcode"));
-                map.put("conditionStatus", rs.getString("condition_status"));
                 map.put("availabilityStatus", rs.getString("availability_status"));
                 list.add(map);
             }
@@ -370,7 +383,7 @@ public class BorrowRepository {
         return new Borrow(
                 rs.getInt("borrow_id"),
                 rs.getInt("member_person_id"),
-                rs.getInt("copy_id"),
+                rs.getString("copy_id"),
                 borrowDateSql != null ? borrowDateSql.toLocalDate() : null,
                 dueDateSql != null ? dueDateSql.toLocalDate() : null,
                 returnDateSql != null ? returnDateSql.toLocalDate() : null

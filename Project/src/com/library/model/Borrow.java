@@ -4,11 +4,12 @@ import java.time.LocalDate;
 
 /**
  * Entity representing a borrow/return transaction.
+ * copyId is formatted as '<resource_id>_<index>' (String).
  */
 public class Borrow {
     private int borrowId;
     private int memberPersonId;
-    private int copyId;
+    private String copyId;
     private LocalDate borrowDate;
     private LocalDate dueDate;
     private LocalDate returnDate;
@@ -16,13 +17,17 @@ public class Borrow {
     public Borrow() {
     }
 
-    public Borrow(int borrowId, int memberPersonId, int copyId, LocalDate borrowDate, LocalDate dueDate, LocalDate returnDate) {
+    public Borrow(int borrowId, int memberPersonId, String copyId, LocalDate borrowDate, LocalDate dueDate, LocalDate returnDate) {
         this.borrowId = borrowId;
         this.memberPersonId = memberPersonId;
         this.copyId = copyId;
         this.borrowDate = borrowDate;
         this.dueDate = dueDate;
         this.returnDate = returnDate;
+    }
+
+    public Borrow(int borrowId, int memberPersonId, int copyId, LocalDate borrowDate, LocalDate dueDate, LocalDate returnDate) {
+        this(borrowId, memberPersonId, String.valueOf(copyId), borrowDate, dueDate, returnDate);
     }
 
     public int getBorrowId() {
@@ -41,11 +46,11 @@ public class Borrow {
         this.memberPersonId = memberPersonId;
     }
 
-    public int getCopyId() {
+    public String getCopyId() {
         return copyId;
     }
 
-    public void setCopyId(int copyId) {
+    public void setCopyId(String copyId) {
         this.copyId = copyId;
     }
 
@@ -78,7 +83,7 @@ public class Borrow {
         return "Borrow{" +
                 "borrowId=" + borrowId +
                 ", memberPersonId=" + memberPersonId +
-                ", copyId=" + copyId +
+                ", copyId='" + copyId + '\'' +
                 ", borrowDate=" + borrowDate +
                 ", dueDate=" + dueDate +
                 ", returnDate=" + returnDate +

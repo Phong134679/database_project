@@ -121,7 +121,7 @@ function renderResources(list) {
           : '<span class="badge badge-warning">Tạp chí số (Cần License)</span>');
 
     const identifier = isBook
-      ? `ISBN: <strong>${r.isbn || '-'}</strong>`
+      ? `<span class="badge badge-secondary">Sách in</span>`
       : `DOI: <strong>${r.doi || '-'}</strong>`;
 
     const extraInfo = isBook
@@ -193,7 +193,7 @@ function populateCopyDropdown() {
   availables.forEach(c => {
     const opt = document.createElement('option');
     opt.value = c.copyId;
-    opt.textContent = `[Mã: ${c.barcode}] ${c.bookTitle} (Bản sao ID: ${c.copyId} - Tình trạng: ${c.conditionStatus})`;
+    opt.textContent = `[Bản sao: ${c.copyId}] ${c.bookTitle} (Trạng thái: ${c.availabilityStatus})`;
     select.appendChild(opt);
   });
 }
@@ -237,8 +237,8 @@ function renderBorrows(list) {
         <td><strong>#${b.borrowId}</strong></td>
         <td><strong>${b.memberName}</strong> (ID: ${b.memberPersonId})</td>
         <td><span class="badge badge-secondary">${b.memberType}</span></td>
-        <td>${b.bookTitle} (Bản sao ${b.copyId})</td>
-        <td><code>${b.barcode}</code></td>
+        <td>${b.bookTitle}</td>
+        <td><code>${b.copyId}</code></td>
         <td>${formatDate(b.borrowDate)}</td>
         <td><strong style="color: ${b.isOverdue ? 'var(--danger)' : 'inherit'};">${formatDate(b.dueDate)}</strong></td>
         <td>${formatDate(b.returnDate)}</td>

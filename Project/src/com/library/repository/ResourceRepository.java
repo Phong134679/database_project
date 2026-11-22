@@ -25,7 +25,7 @@ public class ResourceRepository {
     public List<Map<String, Object>> findAllResourcesDetailed() {
         List<Map<String, Object>> list = new ArrayList<>();
         String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "       pb.isbn, pb.shelf_location, " +
+                     "       pb.shelf_location, " +
                      "       dj.doi, dj.url, dj.file_size, dj.format, dj.is_public, " +
                      "       COUNT(bc.copy_id) AS total_copies, " +
                      "       SUM(CASE WHEN bc.availability_status = 'Available' THEN 1 ELSE 0 END) AS available_copies " +
@@ -34,7 +34,7 @@ public class ResourceRepository {
                      "LEFT JOIN DIGITAL_JOURNAL dj ON r.resource_id = dj.resource_id " +
                      "LEFT JOIN BOOK_COPY bc ON r.resource_id = bc.resource_id " +
                      "GROUP BY r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "         pb.isbn, pb.shelf_location, dj.doi, dj.url, dj.file_size, dj.format, dj.is_public " +
+                     "         pb.shelf_location, dj.doi, dj.url, dj.file_size, dj.format, dj.is_public " +
                      "ORDER BY r.resource_id ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
@@ -52,7 +52,6 @@ public class ResourceRepository {
                 map.put("resourceType", type);
 
                 if ("PHYSICAL_BOOK".equalsIgnoreCase(type)) {
-                    map.put("isbn", rs.getString("isbn"));
                     map.put("shelfLocation", rs.getString("shelf_location"));
                     map.put("totalCopies", rs.getInt("total_copies"));
                     map.put("availableCopies", rs.getInt("available_copies"));
@@ -79,7 +78,7 @@ public class ResourceRepository {
     private List<Map<String, Object>> findAllResourcesLegacy() {
         List<Map<String, Object>> list = new ArrayList<>();
         String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "       pb.isbn, pb.shelf_location, " +
+                     "       pb.shelf_location, " +
                      "       dj.doi, dj.url, dj.file_size, dj.format, " +
                      "       COUNT(bc.copy_id) AS total_copies, " +
                      "       SUM(CASE WHEN bc.availability_status = 'Available' THEN 1 ELSE 0 END) AS available_copies " +
@@ -88,7 +87,7 @@ public class ResourceRepository {
                      "LEFT JOIN DIGITAL_JOURNAL dj ON r.resource_id = dj.resource_id " +
                      "LEFT JOIN BOOK_COPY bc ON r.resource_id = bc.resource_id " +
                      "GROUP BY r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "         pb.isbn, pb.shelf_location, dj.doi, dj.url, dj.file_size, dj.format " +
+                     "         pb.shelf_location, dj.doi, dj.url, dj.file_size, dj.format " +
                      "ORDER BY r.resource_id ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
@@ -106,7 +105,6 @@ public class ResourceRepository {
                 map.put("resourceType", type);
 
                 if ("PHYSICAL_BOOK".equalsIgnoreCase(type)) {
-                    map.put("isbn", rs.getString("isbn"));
                     map.put("shelfLocation", rs.getString("shelf_location"));
                     map.put("totalCopies", rs.getInt("total_copies"));
                     map.put("availableCopies", rs.getInt("available_copies"));
@@ -130,7 +128,7 @@ public class ResourceRepository {
      */
     public List<Map<String, Object>> findCopiesByResourceId(int resourceId) {
         List<Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT copy_id, resource_id, barcode, condition_status, availability_status " +
+        String sql = "SELECT copy_id, resource_id, availability_status " +
                      "FROM BOOK_COPY WHERE resource_id = ? ORDER BY copy_id ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -139,10 +137,8 @@ public class ResourceRepository {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> map = new LinkedHashMap<>();
-                    map.put("copyId", rs.getInt("copy_id"));
+                    map.put("copyId", rs.getString("copy_id"));
                     map.put("resourceId", rs.getInt("resource_id"));
-                    map.put("barcode", rs.getString("barcode"));
-                    map.put("conditionStatus", rs.getString("condition_status"));
                     map.put("availabilityStatus", rs.getString("availability_status"));
                     list.add(map);
                 }

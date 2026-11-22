@@ -60,7 +60,7 @@ public class LibraryController {
      * Handles borrow requests from members.
      * Enforces Test 01 (BR01), BR05, and BR10.
      */
-    public boolean handleBorrowRequest(int memberId, int copyId) {
+    public boolean handleBorrowRequest(int memberId, String copyId) {
         System.out.println("\n[LibraryController] Processing borrow request: Member " + memberId + ", Copy " + copyId);
         try {
             boolean success = borrowService.processNewBorrow(memberId, copyId);
@@ -72,6 +72,10 @@ public class LibraryController {
             System.err.println("[LibraryController] REJECTED: " + e);
             return false;
         }
+    }
+
+    public boolean handleBorrowRequest(int memberId, int copyId) {
+        return handleBorrowRequest(memberId, String.valueOf(copyId));
     }
 
     /**

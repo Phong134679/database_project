@@ -60,7 +60,6 @@ erDiagram
 
     PHYSICAL_BOOK {
         int resource_id PK, FK
-        varchar(20) isbn
         varchar(50) shelf_location
     }
 
@@ -73,17 +72,15 @@ erDiagram
     }
 
     BOOK_COPY {
-        int copy_id PK
+        varchar(30) copy_id PK
         int resource_id FK
-        varchar(50) barcode
-        varchar(50) condition_status
         varchar(20) availability_status
     }
 
     BORROW {
         int borrow_id PK
         int member_person_id FK
-        int copy_id FK
+        varchar(30) copy_id FK
         date borrow_date
         date due_date
         date return_date

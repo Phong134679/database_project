@@ -2,30 +2,28 @@ package com.library.model;
 
 /**
  * Entity representing a specific physical copy of a book title.
+ * copyId is formatted as '<resource_id>_<index>' (String).
+ * Barcode and conditionStatus have been eliminated.
  */
 public class BookCopy {
-    private int copyId;
+    private String copyId;
     private int resourceId;
-    private String barcode;
-    private String conditionStatus;
     private String availabilityStatus;
 
     public BookCopy() {
     }
 
-    public BookCopy(int copyId, int resourceId, String barcode, String conditionStatus, String availabilityStatus) {
+    public BookCopy(String copyId, int resourceId, String availabilityStatus) {
         this.copyId = copyId;
         this.resourceId = resourceId;
-        this.barcode = barcode;
-        this.conditionStatus = conditionStatus;
         this.availabilityStatus = availabilityStatus;
     }
 
-    public int getCopyId() {
+    public String getCopyId() {
         return copyId;
     }
 
-    public void setCopyId(int copyId) {
+    public void setCopyId(String copyId) {
         this.copyId = copyId;
     }
 
@@ -35,22 +33,6 @@ public class BookCopy {
 
     public void setResourceId(int resourceId) {
         this.resourceId = resourceId;
-    }
-
-    public String getBarcode() {
-        return barcode;
-    }
-
-    public void setBarcode(String barcode) {
-        this.barcode = barcode;
-    }
-
-    public String getConditionStatus() {
-        return conditionStatus;
-    }
-
-    public void setConditionStatus(String conditionStatus) {
-        this.conditionStatus = conditionStatus;
     }
 
     public String getAvailabilityStatus() {
@@ -64,10 +46,8 @@ public class BookCopy {
     @Override
     public String toString() {
         return "BookCopy{" +
-                "copyId=" + copyId +
+                "copyId='" + copyId + '\'' +
                 ", resourceId=" + resourceId +
-                ", barcode='" + barcode + '\'' +
-                ", conditionStatus='" + conditionStatus + '\'' +
                 ", availabilityStatus='" + availabilityStatus + '\'' +
                 '}';
     }

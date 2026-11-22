@@ -62,10 +62,10 @@ public class BorrowService {
      * and BR10 (physical book copy tracking).
      * Throws specific BusinessException/ValidationException on failure, returns true on success.
      */
-    public boolean processNewBorrow(int memberId, int copyId) {
+    public boolean processNewBorrow(int memberId, String copyId) {
         // 1. Kiểm tra tính hợp lệ của tham số ID
         DataValidator.validatePositiveId(memberId, "Member Person ID");
-        DataValidator.validatePositiveId(copyId, "Copy ID");
+        DataValidator.validateNonEmptyString(copyId, "Copy ID");
 
         // 2. Kiểm tra tính hợp lệ của người mượn (Test 01, BR01, BR05)
         memberService.isEligibleToBorrow(memberId);
@@ -118,6 +118,10 @@ public class BorrowService {
                 }
             }
         }
+    }
+
+    public boolean processNewBorrow(int memberId, int copyId) {
+        return processNewBorrow(memberId, String.valueOf(copyId));
     }
 
     /**

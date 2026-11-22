@@ -276,7 +276,7 @@ public class ApiServer {
                 }
 
                 int memberId = json.get("memberId").getAsInt();
-                int copyId = json.get("copyId").getAsInt();
+                String copyId = json.get("copyId").getAsString();
 
                 boolean success = borrowService.processNewBorrow(memberId, copyId);
                 Map<String, Object> res = new LinkedHashMap<>();

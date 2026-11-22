@@ -67,12 +67,13 @@ INSERT INTO RESOURCE (resource_id, title, publish_date, topic, resource_type) VA
 
 -- =============================================================================
 -- 4. INSERT SUBCLASSES CỦA RESOURCE (PHYSICAL_BOOK & DIGITAL_JOURNAL)
+-- Bỏ ISBN ở PHYSICAL_BOOK
 -- =============================================================================
 -- Sách in truyền thống
-INSERT INTO PHYSICAL_BOOK (resource_id, isbn, shelf_location) VALUES
-(1, '978-0078022159', 'Kệ A1-03-05'),
-(2, '978-0132350884', 'Kệ B2-12-01'),
-(7, '978-604-0-123456', 'Kệ C1-05-02');
+INSERT INTO PHYSICAL_BOOK (resource_id, shelf_location) VALUES
+(1, 'Kệ A1-03-05'),
+(2, 'Kệ B2-12-01'),
+(7, 'Kệ C1-05-02');
 
 -- Tạp chí, bài báo điện tử
 INSERT INTO DIGITAL_JOURNAL (resource_id, doi, url, file_size, format, is_public) VALUES
@@ -83,13 +84,14 @@ INSERT INTO DIGITAL_JOURNAL (resource_id, doi, url, file_size, format, is_public
 
 -- =============================================================================
 -- 5. INSERT BOOK_COPY (Bản sao vật lý của sách)
+-- copy_id dạng VARCHAR đánh theo '<resource_id>_<index>'; Bỏ barcode & condition_status
 -- =============================================================================
-INSERT INTO BOOK_COPY (copy_id, resource_id, barcode, condition_status, availability_status) VALUES
-(1, 1, 'BC-DB-001', 'Good', 'Borrowed'),
-(2, 1, 'BC-DB-002', 'Good', 'Available'),
-(3, 2, 'BC-CC-001', 'Good', 'Available'),
-(4, 2, 'BC-CC-002', 'Torn Cover', 'Maintenance'),
-(5, 7, 'BC-CSDLNC-001', 'Good', 'Available');
+INSERT INTO BOOK_COPY (copy_id, resource_id, availability_status) VALUES
+('1_1', 1, 'Borrowed'),
+('1_2', 1, 'Available'),
+('2_1', 2, 'Available'),
+('2_2', 2, 'Borrowed'),
+('7_1', 7, 'Available');
 
 -- =============================================================================
 -- 6. INSERT LICENSE_PACKAGE & RESOURCE_LICENSE (Gói bản quyền số)
@@ -127,14 +129,14 @@ INSERT INTO AUTHOR_OF (person_id, resource_id) VALUES
 -- 9. INSERT BORROW (Giao dịch mượn trả)
 -- =============================================================================
 INSERT INTO BORROW (borrow_id, member_person_id, copy_id, borrow_date, due_date, return_date) VALUES
--- Giao dịch 1: Đang mượn hợp lệ
-(1, 1, 1, '2026-10-01', '2026-10-21', NULL),
+-- Giao dịch 1: Đang mượn hợp lệ (Bản sao '1_1')
+(1, 1, '1_1', '2026-10-01', '2026-10-21', NULL),
 
--- Giao dịch 2: Đã trả đúng hạn
-(2, 2, 3, '2026-09-01', '2026-10-01', '2026-09-25'),
+-- Giao dịch 2: Đã trả đúng hạn (Bản sao '2_1')
+(2, 2, '2_1', '2026-09-01', '2026-10-01', '2026-09-25'),
 
--- Giao dịch 3: Trả sách trễ hạn (Phát sinh tiền phạt - Dùng cho Test 03)
-(3, 1, 2, '2026-09-01', '2026-09-15', '2026-09-20');
+-- Giao dịch 3: Trả sách trễ hạn (Bản sao '1_2' - Phát sinh tiền phạt - Dùng cho Test 03)
+(3, 1, '1_2', '2026-09-01', '2026-09-15', '2026-09-20');
 
 -- =============================================================================
 -- 10. INSERT FINE & PAYMENT_TRANSACTION (Xử lý vi phạm và trả góp tiền phạt)

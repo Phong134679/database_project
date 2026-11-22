@@ -45,57 +45,334 @@ Giao diện Web **chủ đích không tích hợp các màn hình CRUD tĩnh** (
 
 ---
 
-## 3. Chi Tiết Hiện Trạng Các Màn Hình Trên Giao Diện Web
+## 3. Chi Tiết Kiến Trúc CSDL & Phối Hợp Bảng Trên Từng Màn Hình Web
+
+Dưới đây là đặc tả chi tiết cấu trúc CSDL phục vụ từng Tab giao diện, bao gồm **các bảng CSDL cần sử dụng**, **kỹ thuật kết hợp bảng (JOIN)**, **các trường dữ liệu trích xuất/tính toán**, và **các giao dịch ghi dữ liệu (Data Manipulation / ACID Transactions)**.
+
+---
 
 ### 3.1. Tab 1: Danh mục Tài nguyên (Resources Catalog)
-- **Thành phần**:
-  - Ô tìm kiếm thời gian thực (Search bar) tìm theo tên sách, chủ đề, mã ISBN hoặc mã DOI.
-  - Hộp chọn lọc theo loại tài nguyên: *Tất cả*, *Chỉ Sách in*, *Chỉ Tạp chí số*.
-  - Bảng dữ liệu 8 cột: Mã tài nguyên, Tiêu đề, Phân loại (Badge màu), Chủ đề, Ngày xuất bản, Mã định danh (ISBN/DOI), Thông tin kho (Kệ sách hoặc Dung lượng tệp), và Tỷ lệ bản sao khả dụng / Tổng số bản sao.
-  - Nút tải trực tiếp (Open Access) đối với các tạp chí mở.
-- **Nghiệp vụ đáp ứng**: **FR02 (95%)**, **FR03 (90%)**.
+
+#### 1. Mục đích & Nghiệp vụ đáp ứng
+- Tra cứu tập trung danh mục toàn bộ tài nguyên tri thức của thư viện (cả sách in vật lý và tạp chí/bài báo số).
+- Tìm kiếm tức thời đa tiêu chí (theo tiêu đề, chủ đề, mã ISBN sách in, hoặc mã DOI bài báo số).
+- Thống kê tồn kho số bản sao sẵn sàng/tổng số bản sao của sách in theo thời gian thực.
+- Phân định rõ ràng tài liệu số công khai (*Open Access*) và tài liệu số thương mại (*Cần License*).
+- **Nghiệp vụ đáp ứng**: **FR02 (Resource Management)**, **FR03 (Copy Tracking)**, **BR07**, **BR04**.
+
+#### 2. Các bảng CSDL cần sử dụng & Mối quan hệ kết hợp
+- **Bảng chính (Primary Table)**:
+  - `RESOURCE` (Superclass): Lưu trữ thông tin cốt lõi dùng chung cho mọi loại tài nguyên (`resource_id`, `title`, `publish_date`, `topic`, `resource_type`).
+- **Các bảng con kế thừa (Subclass Tables)**:
+  - `PHYSICAL_BOOK` (Subclass 1): Lưu thuộc tính riêng của sách in vật lý (`shelf_location` - thuộc tính `isbn` đã được loại bỏ).
+    - *Kỹ thuật JOIN*: `RESOURCE` **LEFT JOIN** `PHYSICAL_BOOK` ON `r.resource_id = pb.resource_id`.
+  - `DIGITAL_JOURNAL` (Subclass 2): Lưu thuộc tính riêng của tài liệu số (`doi`, `url`, `file_size`, `format`, `is_public`).
+    - *Kỹ thuật JOIN*: `RESOURCE` **LEFT JOIN** `DIGITAL_JOURNAL` ON `r.resource_id = dj.resource_id`.
+- **Bảng liên quan theo dõi thực thể cá thể (Tracking Table)**:
+  - `BOOK_COPY`: Quản lý từng bản sao vật lý cụ thể của sách trên giá kệ (`copy_id` dạng `<resource_id>_<index>`, `resource_id`, `availability_status` - đã loại bỏ `barcode`).
+    - *Kỹ thuật JOIN*: `RESOURCE` **LEFT JOIN** `BOOK_COPY` ON `r.resource_id = bc.resource_id`.
+- **Bảng liên kết tác giả (Associative Table)**:
+  - `AUTHOR_OF` & `PERSON`: Cho phép lấy danh sách tác giả/đồng tác giả sáng tác tài nguyên.
+    - *Kỹ thuật JOIN*: `RESOURCE` **LEFT JOIN** `AUTHOR_OF` ON `r.resource_id = ao.resource_id` **LEFT JOIN** `PERSON` ON `ao.person_id = p.person_id`.
+
+#### 3. Câu lệnh truy vấn kết hợp & Tính toán tổng hợp (Aggregation Query)
+```sql
+SELECT 
+    r.resource_id,
+    r.title,
+    r.publish_date,
+    r.topic,
+    r.resource_type,
+    -- Thuộc tính sách in (nếu là PHYSICAL_BOOK)
+    pb.shelf_location,
+    -- Thuộc tính tạp chí số (nếu là DIGITAL_JOURNAL)
+    dj.doi,
+    dj.url,
+    dj.file_size,
+    dj.format,
+    dj.is_public,
+    -- Thống kê số lượng bản sao thời gian thực (Aggregation)
+    COUNT(bc.copy_id) AS total_copies,
+    SUM(CASE WHEN bc.availability_status = 'Available' THEN 1 ELSE 0 END) AS available_copies
+FROM RESOURCE r
+LEFT JOIN PHYSICAL_BOOK pb ON r.resource_id = pb.resource_id
+LEFT JOIN DIGITAL_JOURNAL dj ON r.resource_id = dj.resource_id
+LEFT JOIN BOOK_COPY bc ON r.resource_id = bc.resource_id
+GROUP BY 
+    r.resource_id, r.title, r.publish_date, r.topic, r.resource_type,
+    pb.shelf_location,
+    dj.doi, dj.url, dj.file_size, dj.format, dj.is_public
+ORDER BY r.resource_id ASC;
+```
+
+#### 4. Thao tác ghi dữ liệu (Data Modification)
+- Tab 1 chủ yếu phục vụ tra cứu danh mục (Read-only view). Dữ liệu danh mục được khởi tạo từ các kịch bản chuẩn hóa CSDL (`schema.sql`, `sample_data.sql`).
 
 ---
 
 ### 3.2. Tab 2: Mượn & Trả Sách (Circulation Desk)
-- **Thành phần**:
-  - **Form Mượn sách**: Dropdown chọn độc giả (có gắn nhãn gợi ý Đủ điều kiện / Không đủ điều kiện) và Dropdown chọn bản sao sách khả dụng (kèm mã vạch và tình trạng vật lý).
-  - Nút *"📤 Xác nhận mượn sách"*: Gửi yêu cầu qua REST API `POST /api/borrows`.
-  - **Bảng Danh sách Phiếu mượn**: Hiển thị đầy đủ thông tin: Mã mượn, Tên độc giả, Vai trò, Tên sách & Mã bản sao, Mã vạch, Ngày mượn, Hạn trả, Ngày trả, Trạng thái (Đang mượn, Quá hạn, Đã trả).
-  - Nút *"Trả sách"*: Mở **Modal Hoàn trả sách**, cho phép tùy chỉnh ngày trả thực tế để kiểm chứng tình huống trả trễ hạn phát sinh phạt.
-- **Nghiệp vụ đáp ứng**: **FR04 (100%)**, **FR05 (90%)**, **FR01 (90%)**, **FR03 (90%)**.
+
+#### 1. Mục đích & Nghiệp vụ đáp ứng
+- Tiếp nhận và xử lý yêu cầu mượn sách in vật lý của độc giả.
+- Thẩm định 4 lớp ràng buộc nghiệp vụ: Chặn khách ngoài (`GUEST`) và tác giả ngoài (`EXTERNAL_AUTHOR`) theo **BR01**; Chặn sách quá hạn, nợ phạt quá hạn, vượt quota theo **BR05**; Chặn bản sao không sẵn sàng theo **BR10**.
+- Tự động gán hạn trả tiêu chuẩn 14 ngày (Sinh viên) hoặc 30 ngày (Giảng viên) theo **BR02, BR05**.
+- Tiếp nhận hoàn trả sách, khôi phục trạng thái bản sao về `'Available'`, tự động phát hiện trễ hạn và phát sinh phiếu phạt theo **BR03**.
+- **Nghiệp vụ đáp ứng**: **FR01, FR03, FR04, FR05**, **BR01, BR02, BR03, BR05, BR10**.
+
+#### 2. Các bảng CSDL cần sử dụng & Mối quan hệ kết hợp
+- **Bảng giao dịch trung tâm (Transaction Table)**:
+  - `BORROW`: Lưu trữ mỗi lượt mượn trả (`borrow_id`, `member_person_id`, `copy_id`, `borrow_date`, `due_date`, `return_date`).
+- **Các bảng đối chiếu thông tin độc giả (Borrower Verification)**:
+  - `PERSON`: Lấy tên độc giả, email, số định danh CCCD (`ssn`), và vai trò `person_type`.
+  - `UNIVERSITY_MEMBER`: Lấy mã sinh viên/giảng viên (`member_id`), đơn vị công tác (`department`), vai trò nội bộ (`member_type`), ngành học (`major`) hoặc học hàm (`academic_rank`).
+    - *Kỹ thuật JOIN*: `BORROW` **JOIN** `UNIVERSITY_MEMBER` ON `b.member_person_id = um.person_id` **JOIN** `PERSON` ON `um.person_id = p.person_id`.
+- **Các bảng đối chiếu bản sao sách mượn (Book Copy Identification)**:
+  - `BOOK_COPY`: Xác định bản sao được mượn, kiểm tra `availability_status`, lấy mã vạch `barcode`.
+  - `RESOURCE` & `PHYSICAL_BOOK`: Lấy tiêu đề sách (`title`), vị trí kệ sách (`shelf_location`), mã `isbn`.
+    - *Kỹ thuật JOIN*: `BORROW` **JOIN** `BOOK_COPY` ON `b.copy_id = bc.copy_id` **JOIN** `RESOURCE` ON `bc.resource_id = r.resource_id`.
+- **Bảng phạt liên kết (Fine Table)**:
+  - `FINE`: Kiểm tra xem lượt mượn đó có bị phát sinh phiếu phạt vi phạm trễ hạn hay không.
+    - *Kỹ thuật JOIN*: `BORROW` **LEFT JOIN** `FINE` ON `b.borrow_id = f.borrow_id`.
+
+#### 3. Câu lệnh truy vấn hiển thị danh sách mượn trả
+```sql
+SELECT 
+    b.borrow_id,
+    b.member_person_id,
+    p.name AS member_name,
+    p.email AS member_email,
+    um.member_type,
+    um.member_id,
+    b.copy_id,
+    r.title AS book_title,
+    b.borrow_date,
+    b.due_date,
+    b.return_date,
+    -- Xác định trạng thái lượt mượn thời gian thực
+    CASE 
+        WHEN b.return_date IS NOT NULL THEN 'Returned'
+        WHEN b.due_date < CURRENT_DATE THEN 'Overdue'
+        ELSE 'Borrowed'
+    END AS status
+FROM BORROW b
+JOIN UNIVERSITY_MEMBER um ON b.member_person_id = um.person_id
+JOIN PERSON p ON um.person_id = p.person_id
+JOIN BOOK_COPY bc ON b.copy_id = bc.copy_id
+JOIN RESOURCE r ON bc.resource_id = r.resource_id
+ORDER BY b.borrow_id DESC;
+```
+
+#### 4. Các thao tác ghi dữ liệu (Data Modifications / ACID Transactions)
+- **Thao tác 1: Tạo phiếu mượn mới (POST /api/borrows)**:
+  1. `INSERT INTO BORROW (member_person_id, copy_id, borrow_date, due_date, return_date) VALUES (?, ?, ?, ?, NULL);`
+  2. `UPDATE BOOK_COPY SET availability_status = 'Borrowed' WHERE copy_id = ?;`
+  *(Thực thi trong cùng một Database Transaction `conn.setAutoCommit(false)` bảo đảm tính nguyên tử ACID)*.
+- **Thao tác 2: Hoàn tất trả sách (POST /api/borrows/{id}/return)**:
+  1. `UPDATE BORROW SET return_date = ? WHERE borrow_id = ?;`
+  2. `UPDATE BOOK_COPY SET availability_status = 'Available' WHERE copy_id = ?;`
+  3. Nếu `return_date > due_date` (Trễ hạn $N$ ngày):
+     `INSERT INTO FINE (borrow_id, total_fine_amount, payment_status, due_date) VALUES (?, N * 5000, 'Unpaid', return_date + 14 days);`
 
 ---
 
 ### 3.3. Tab 3: Tiền Phạt & Thanh Toán Trả Góp (Fines & Installment Payments)
-- **Thành phần**:
-  - 3 Thẻ thống kê tài chính thư viện (KPI Cards):
-    1. *Tổng số phiếu phạt phát sinh*.
-    2. *Số phiếu phạt chưa tất toán*.
-    3. *Tổng công nợ tiền phạt còn tồn đọng (VNĐ)*.
-  - **Bảng Phiếu phạt**: Hiển thị Mã phạt, Lượt mượn liên quan, Tên độc giả, Tên sách, Tổng tiền phạt, Số tiền đã nộp, Số dư còn nợ, Trạng thái thanh toán (`Unpaid`, `Partially Paid`, `Completed`), Hạn nộp phạt.
-  - **Modal Nộp phạt (Trả góp)**: Nhập số tiền nộp đợt này (tối đa bằng số dư nợ còn lại), chọn phương thức (Tiền mặt, Chuyển khoản, Thẻ thanh toán).
-  - **Modal Lịch sử thanh toán**: Xem chi tiết các đợt nộp tiền của từng phiếu phạt (Mã GD, Số tiền, Thời điểm nộp, Hình thức).
-- **Nghiệp vụ đáp ứng**: **FR05 (90%)**, **FR06 (100%)**.
+
+#### 1. Mục đích & Nghiệp vụ đáp ứng
+- Quản lý toàn bộ công nợ phát sinh từ vi phạm trễ hạn trả sách hoặc làm hỏng sách.
+- Hiển thị 3 chỉ số tài chính thư viện (KPI cards): Tổng số phiếu phạt, số phiếu chưa tất toán, tổng công nợ tồn đọng.
+- Cho phép độc giả nộp phạt theo cơ chế trả góp nhiều đợt (**BR11**), chọn linh hoạt các hình thức thanh toán (Tiền mặt, Chuyển khoản, Thẻ).
+- Tự động đối soát số dư nợ còn lại và cập nhật trạng thái phiếu phạt (`Partially Paid` $\rightarrow$ `Completed`).
+- Xem toàn bộ nhật ký lịch sử các đợt thanh toán của từng phiếu phạt (**BR08**).
+- **Nghiệp vụ đáp ứng**: **FR05 (Fine Management)**, **FR06 (Payment Transaction)**, **BR03, BR08, BR11**.
+
+#### 2. Các bảng CSDL cần sử dụng & Mối quan hệ kết hợp
+- **Bảng phiếu phạt trung tâm (Primary Table)**:
+  - `FINE`: Lưu thông tin phiếu phạt (`fine_id`, `borrow_id`, `total_fine_amount`, `payment_status`, `due_date`).
+- **Bảng giao dịch thanh toán trả góp (Payment Installments Table)**:
+  - `PAYMENT_TRANSACTION`: Lưu mỗi lần độc giả đóng tiền (`transaction_id`, `fine_id`, `amount_paid`, `payment_date`, `payment_method`).
+    - *Kỹ thuật JOIN*: `FINE` **LEFT JOIN** `PAYMENT_TRANSACTION` ON `f.fine_id = pt.fine_id`.
+- **Các bảng đối chiếu nguồn gốc vi phạm (Borrow Context Tables)**:
+  - `BORROW`: Xác định độc giả vi phạm và sách liên quan.
+  - `PERSON` & `UNIVERSITY_MEMBER`: Lấy họ tên, mã độc giả vi phạm.
+  - `BOOK_COPY` & `RESOURCE`: Lấy tiêu đề sách bị trả trễ hạn.
+    - *Kỹ thuật JOIN*: `FINE` **JOIN** `BORROW` ON `f.borrow_id = b.borrow_id` **JOIN** `PERSON` ON `b.member_person_id = p.person_id` **JOIN** `BOOK_COPY` ON `b.copy_id = bc.copy_id` **JOIN** `RESOURCE` ON `bc.resource_id = r.resource_id`.
+
+#### 3. Câu lệnh truy vấn kết hợp bảng & Tính toán công nợ
+```sql
+SELECT 
+    f.fine_id,
+    f.borrow_id,
+    b.member_person_id,
+    p.name AS member_name,
+    r.title AS book_title,
+    f.total_fine_amount,
+    -- Tính lũy kế số tiền đã nộp từ các đợt thanh toán trả góp (Aggregation)
+    COALESCE(SUM(pt.amount_paid), 0.00) AS paid_amount,
+    -- Tính số dư nợ còn lại
+    (f.total_fine_amount - COALESCE(SUM(pt.amount_paid), 0.00)) AS remaining_balance,
+    f.payment_status,
+    f.due_date
+FROM FINE f
+JOIN BORROW b ON f.borrow_id = b.borrow_id
+JOIN PERSON p ON b.member_person_id = p.person_id
+JOIN BOOK_COPY bc ON b.copy_id = bc.copy_id
+JOIN RESOURCE r ON bc.resource_id = r.resource_id
+LEFT JOIN PAYMENT_TRANSACTION pt ON f.fine_id = pt.fine_id
+GROUP BY 
+    f.fine_id, f.borrow_id, b.member_person_id, p.name, r.title,
+    f.total_fine_amount, f.payment_status, f.due_date
+ORDER BY f.fine_id DESC;
+```
+
+#### 4. Các thao tác ghi dữ liệu (Data Modifications / ACID Transactions)
+- **Thực hiện một đợt thanh toán trả góp (POST /api/fines/{id}/payments)**:
+  1. `INSERT INTO PAYMENT_TRANSACTION (fine_id, amount_paid, payment_date, payment_method) VALUES (?, ?, CURRENT_TIMESTAMP, ?);`
+  2. Tính tổng số tiền đã nộp mới: $\text{new\_paid} = \sum \text{amount\_paid}$.
+  3. Cập nhật trạng thái phiếu phạt trong `FINE`:
+     - Nếu $\text{new\_paid} \ge \text{total\_fine\_amount}$: `UPDATE FINE SET payment_status = 'Completed' WHERE fine_id = ?;`
+     - Nếu $\text{new\_paid} < \text{total\_fine\_amount}$: `UPDATE FINE SET payment_status = 'Partially Paid' WHERE fine_id = ?;`
 
 ---
 
 ### 3.4. Tab 4: Tài Liệu Số & Nhật Ký Truy Cập (Digital Journals & Access Logs)
-- **Thành phần**:
-  - **Form Thẩm định Quyền đọc**: Chọn độc giả, chọn bài báo số (có gắn nhãn *Open Access* hoặc *Cần License*), nhập địa chỉ IP mô phỏng, chọn ngày truy cập.
-  - Khung kết quả trực quan (Result Alert Box):
-    - *Màu xanh lá*: Cấp quyền truy cập thành công $\rightarrow$ Cung cấp nút tải toàn văn PDF.
-    - *Màu đỏ*: Từ chối truy cập $\rightarrow$ Nêu rõ nguyên nhân vi phạm quy chế BR04/BR12 và hiển thị mã lỗi `BR04_LICENSE_EXPIRED`.
-  - **Bảng Nhật ký Truy cập (`ACCESS_LOG`)**: Cập nhật tức thời mọi lần thẩm định đọc bài báo, hiển thị đầy đủ Mã log, Thời gian, Tên độc giả, Tên bài báo, Địa chỉ IP, và Trạng thái Cấp quyền (Granted) vs Bị chặn (Blocked).
-- **Nghiệp vụ đáp ứng**: **FR07 (100%)**, **FR08 (100%)**.
+
+#### 1. Mục đích & Nghiệp vụ đáp ứng
+- Cung cấp form thẩm định quyền truy cập và đọc toàn văn các bài báo/tạp chí điện tử theo thời gian thực.
+- Kiểm tra các tầng điều kiện bản quyền:
+  1. **Đặc quyền Tác giả**: Tác giả sở hữu tài nguyên (`AUTHOR_OF`) được tự do truy cập tác phẩm của mình mà không cần gói bản quyền thương mại. Riêng đối tượng là `EXTERNAL_AUTHOR` chỉ được cấp quyền truy cập vào bản Digital (không áp dụng mượn bản vật lý về nhà).
+  2. **Tài liệu mở (Open Access)**: Nếu `is_public = TRUE`, hệ thống tự động mở quyền đọc tự do cho mọi người dùng (kể cả khách ngoài `GUEST`).
+  3. **Bản quyền thương mại**: Yêu cầu kiểm tra gói bản quyền `GRANTED_LICENSE` còn hiệu lực bao hàm tài nguyên theo **BR04 & BR12**.
+- Tự động ghi nhận mọi lượt tương tác vào bảng nhật ký kiểm toán độc lập `ACCESS_LOG` (**BR13 & FR08**).
+- **Nghiệp vụ đáp ứng**: **FR07 (Digital License Management)**, **FR08 (Access Logging)**, **BR04, BR12, BR13**.
+
+#### 2. Các bảng CSDL cần sử dụng & Mối quan hệ kết hợp
+- **Bảng tài nguyên số (Target Resource Tables)**:
+  - `DIGITAL_JOURNAL` & `RESOURCE`: Lấy thông tin bài báo (`resource_id`, `title`, `doi`, `url`, `file_size`, `format`, `is_public`).
+- **Bảng người dùng yêu cầu (Requesting User Table)**:
+  - `PERSON`: Định danh người yêu cầu truy cập (`person_id`, `name`, `email`, `person_type`).
+- **Bảng liên kết tác giả (Authorship Check)**:
+  - `AUTHOR_OF`: Kiểm tra xem người yêu cầu có phải là tác giả của chính tài nguyên số này hay không.
+    - *Câu lệnh kiểm tra*: `SELECT COUNT(*) FROM AUTHOR_OF WHERE person_id = ? AND resource_id = ?`.
+- **Các bảng quản lý bản quyền số (License Entitlement Verification - BR04, BR12)**:
+  - `GRANTED_LICENSE`: Kiểm tra thời hạn cấp quyền cho người dùng (`grant_id`, `person_id`, `license_id`, `valid_from`, `valid_to`).
+  - `RESOURCE_LICENSE`: Xác định tài nguyên số thuộc các gói bản quyền nào (`resource_id`, `license_id`).
+  - `LICENSE_PACKAGE`: Lấy thông tin tên gói bản quyền, nhà cung cấp.
+    - *Kỹ thuật JOIN*: `GRANTED_LICENSE` **JOIN** `RESOURCE_LICENSE` ON `gl.license_id = rl.license_id`.
+- **Bảng nhật ký kiểm toán (Audit Logging Table - BR13)**:
+  - `ACCESS_LOG`: Lưu vết lịch sử truy cập độc lập không khóa ngoại cứng (`log_id`, `person_id`, `journal_resource_id`, `access_timestamp`, `ip_address`, `download_success`).
+
+#### 3. Câu lệnh truy vấn thẩm định bản quyền & Truy vấn nhật ký
+```sql
+-- 1. Thẩm định gói bản quyền còn hiệu lực vào ngày accessDate (BR04, BR12)
+SELECT COUNT(*) AS active_count
+FROM GRANTED_LICENSE gl
+JOIN RESOURCE_LICENSE rl ON gl.license_id = rl.license_id
+WHERE gl.person_id = :personId
+  AND rl.resource_id = :journalResourceId
+  AND gl.valid_from <= :accessDate
+  AND gl.valid_to >= :accessDate;
+
+-- 2. Truy vấn hiển thị bảng nhật ký ACCESS_LOG (Soft-Join hiển thị thông tin người dùng và tài liệu)
+SELECT 
+    al.log_id,
+    al.access_timestamp,
+    al.person_id,
+    p.name AS person_name,
+    al.journal_resource_id,
+    r.title AS journal_title,
+    al.ip_address,
+    al.download_success
+FROM ACCESS_LOG al
+LEFT JOIN PERSON p ON al.person_id = p.person_id
+LEFT JOIN RESOURCE r ON al.journal_resource_id = r.resource_id
+ORDER BY al.log_id DESC;
+```
+
+#### 4. Các thao tác ghi dữ liệu (Data Modifications)
+- **Ghi nhận nhật ký truy cập (POST /api/digital-journals/{id}/access)**:
+  - Luôn thực thi lệnh ghi log bất kể thẩm định thành công hay thất bại (BR13):
+    `INSERT INTO ACCESS_LOG (person_id, journal_resource_id, access_timestamp, ip_address, download_success) VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?);`
 
 ---
 
 ### 3.5. Tab 5: Quản Lý Độc Giả (Members Directory)
-- **Thành phần**:
-  - Bảng tổng hợp người dùng thư viện: ID, Họ tên, Email, CCCD (`ssn`), Vai trò đối tượng (`STUDENT`, `FACULTY`, `GUEST`, `EXTERNAL_AUTHOR`), Mã thành viên, Khoa viện, Chuyên ngành / Học hàm, Số sách đang mượn, Cảnh báo nợ phạt, và Trạng thái tư cách mượn sách.
-  - Nhãn trạng thái hiển thị trực quan: *Đủ điều kiện* (Xanh lá) hoặc *Không đủ điều kiện* (Đỏ) kèm lý do chi tiết khi rê chuột (Ví dụ: *"Đang có sách quá hạn"*, *"Đang nợ tiền phạt"*, *"Khách ngoài chỉ được đọc tại chỗ"*).
-- **Nghiệp vụ đáp ứng**: **FR01 (90%)**.
+
+#### 1. Mục đích & Nghiệp vụ đáp ứng
+- Tổng hợp hồ sơ toàn bộ người dùng tương tác với thư viện thuộc mọi phân loại đối tượng (Sinh viên, Giảng viên, Khách ngoài, Tác giả ngoài).
+- Thẩm định tự động và hiển thị nhãn *Đủ điều kiện / Không đủ điều kiện* mượn sách mang về nhà theo quy chế **BR01 & BR05**.
+- Thống kê thời gian thực: Số lượng sách đang mượn (`activeBorrowsCount`), cảnh báo sách quá hạn (`hasOverdue`), cảnh báo nợ phạt quá hạn (`hasUnpaidFines`).
+- **Nghiệp vụ đáp ứng**: **FR01 (User Management)**, **BR01, BR05**.
+
+#### 2. Các bảng CSDL cần sử dụng & Mối quan hệ kết hợp
+- **Bảng cha người dùng (Superclass Table)**:
+  - `PERSON`: Lưu trữ thông tin cá nhân của mọi đối tượng (`person_id`, `ssn`, `name`, `address`, `email`, `phone`, `person_type`).
+- **Các bảng con kế thừa vai trò (Role Subclass Tables)**:
+  - `UNIVERSITY_MEMBER`: Thành viên chính thức của trường (`member_id`, `department`, `member_type`, `major`, `academic_rank`).
+    - *Kỹ thuật JOIN*: `PERSON` **LEFT JOIN** `UNIVERSITY_MEMBER` ON `p.person_id = um.person_id`.
+  - `EXTERNAL_AUTHOR`: Tác giả độc lập bên ngoài trường (`affiliation`, `biography`).
+    - *Kỹ thuật JOIN*: `PERSON` **LEFT JOIN** `EXTERNAL_AUTHOR` ON `p.person_id = ea.person_id`.
+- **Các bảng đối chiếu lịch sử giao dịch (Eligibility Validation Tables - BR05)**:
+  - `BORROW`: Đếm số sách đang giữ chưa trả (`return_date IS NULL`) và kiểm tra sách quá hạn (`due_date < CURRENT_DATE AND return_date IS NULL`).
+  - `FINE`: Kiểm tra phiếu phạt quá hạn chưa thanh toán (`payment_status != 'Completed' AND due_date < CURRENT_DATE`).
+  - `AUTHOR_OF`: Kiểm tra các tài nguyên khoa học do người dùng xuất bản.
+
+#### 3. Câu lệnh truy vấn trích xuất hồ sơ độc giả chi tiết
+```sql
+SELECT 
+    p.person_id,
+    p.ssn,
+    p.name,
+    p.address,
+    p.email,
+    p.phone,
+    p.person_type,
+    -- Thuộc tính thành viên trường (nếu có)
+    um.member_id,
+    um.department,
+    um.member_type,
+    um.major,
+    um.academic_rank,
+    -- Thuộc tính tác giả ngoài (nếu có)
+    ea.affiliation,
+    ea.biography,
+    -- Thống kê số sách đang giữ chưa trả
+    (SELECT COUNT(*) FROM BORROW b WHERE b.member_person_id = p.person_id AND b.return_date IS NULL) AS active_borrows_count,
+    -- Kiểm tra có sách trễ hạn chưa trả không
+    EXISTS(SELECT 1 FROM BORROW b WHERE b.member_person_id = p.person_id AND b.return_date IS NULL AND b.due_date < CURRENT_DATE) AS has_overdue,
+    -- Kiểm tra có nợ phạt quá hạn chưa trả không
+    EXISTS(SELECT 1 FROM FINE f JOIN BORROW b ON f.borrow_id = b.borrow_id WHERE b.member_person_id = p.person_id AND f.payment_status != 'Completed' AND f.due_date < CURRENT_DATE) AS has_unpaid_fines,
+    -- Kiểm tra có phải là tác giả đã xuất bản tài nguyên hay không
+    EXISTS(SELECT 1 FROM AUTHOR_OF ao WHERE ao.person_id = p.person_id) AS is_author
+FROM PERSON p
+LEFT JOIN UNIVERSITY_MEMBER um ON p.person_id = um.person_id
+LEFT JOIN EXTERNAL_AUTHOR ea ON p.person_id = ea.person_id
+ORDER BY p.person_id ASC;
+```
+
+#### 4. Thao tác ghi dữ liệu (Data Modification)
+- Tab 5 đóng vai trò danh bạ quản lý người dùng và giám sát tư cách mượn sách. Dữ liệu thành viên được nạp từ kịch bản CSDL và cập nhật trạng thái động khi các giao dịch mượn/trả/phạt diễn ra ở Tab 2 và Tab 3.
+
+---
+
+### 3.6. Ma Trận Tổng Hợp Phối Hợp Bảng CSDL Theo Từng Tab Trên Giao Diện Web
+
+| Bảng Cơ sở Dữ liệu | Tab 1: Danh mục Tài nguyên | Tab 2: Mượn & Trả sách | Tab 3: Tiền phạt & Thanh toán | Tab 4: Tài liệu số & Nhật ký | Tab 5: Quản lý Độc giả |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **`PERSON`** | Phụ (Tác giả) | **Chính (Độc giả)** | **Chính (Người nộp)** | **Chính (Người đọc)** | **Chính (Hồ sơ người dùng)** |
+| **`UNIVERSITY_MEMBER`** | - | **Chính (Mã SV/CB, Quota)** | Phụ (Mã thành viên) | - | **Chính (Khoa/Viện, Ngành/Hàm)** |
+| **`EXTERNAL_AUTHOR`** | Phụ (Tác giả ngoài) | - | - | Phụ (Quyền tác giả) | **Chính (Affiliation/Bio)** |
+| **`RESOURCE`** | **Chính (Danh mục master)** | **Chính (Tên sách)** | **Chính (Tên sách phạt)** | **Chính (Tiêu đề bài báo)** | Phụ (Tác phẩm xuất bản) |
+| **`PHYSICAL_BOOK`** | **Chính (ISBN, Kệ sách)** | Phụ (Vị trí sách) | Phụ (Thông tin sách) | - | - |
+| **`DIGITAL_JOURNAL`** | **Chính (DOI, Link, Public)** | - | - | **Chính (File, DOI, URL)** | - |
+| **`BOOK_COPY`** | **Chính (Đếm bản sao)** | **Chính (Bản sao mượn)** | Phụ (Bản sao liên quan) | - | - |
+| **`AUTHOR_OF`** | Phụ (Hiển thị tác giả) | - | - | **Chính (Đặc quyền Tác giả)** | Phụ (Đếm tác phẩm xuất bản) |
+| **`BORROW`** | - | **Chính (Tạo & Trả mượn)** | **Chính (Nguồn gốc phạt)** | - | **Chính (Đếm sách đang giữ)** |
+| **`FINE`** | - | **Chính (Tạo phạt trễ)** | **Chính (Thu nợ & KPI)** | - | **Chính (Kiểm tra nợ phạt)** |
+| **`PAYMENT_TRANSACTION`**| - | - | **Chính (Ghi nhận đợt nộp)** | - | - |
+| **`LICENSE_PACKAGE`** | Phụ (Gói bản quyền) | - | - | **Chính (Thông tin gói)** | - |
+| **`RESOURCE_LICENSE`** | Phụ (Liên kết gói) | - | - | **Chính (Gói chứa bài báo)**| - |
+| **`GRANTED_LICENSE`** | - | - | - | **Chính (Thời hạn cấp quyền)**| - |
+| **`ACCESS_LOG`** | - | - | - | **Chính (Ghi nhật ký BR13)**| - |
 
 ---
 

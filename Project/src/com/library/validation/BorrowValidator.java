@@ -17,12 +17,16 @@ public final class BorrowValidator {
     /**
      * Validates that a physical book copy is available for new loan (BR10).
      */
-    public static void validateCopyAvailable(boolean isAvailable, int copyId) {
+    public static void validateCopyAvailable(boolean isAvailable, String copyId) {
         if (!isAvailable) {
             throw new BookNotAvailableException(
                     "Bản sao sách (Copy ID: " + copyId + ") hiện không ở trạng thái sẵn sàng để mượn (đang được mượn hoặc hỏng/mất)."
             );
         }
+    }
+
+    public static void validateCopyAvailable(boolean isAvailable, int copyId) {
+        validateCopyAvailable(isAvailable, String.valueOf(copyId));
     }
 
     /**

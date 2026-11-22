@@ -150,7 +150,7 @@ public class ValidationAndExceptionTest {
         // 3.1 BR10: Bản sao sách không sẵn sàng
         runTest("BorrowValidator (BR10): Chặn mượn bản sao không Available", () -> {
             try {
-                BorrowValidator.validateCopyAvailable(false, 101);
+                BorrowValidator.validateCopyAvailable(false, "1_1");
                 return false;
             } catch (BookNotAvailableException e) {
                 System.out.println("    -> Bắt đúng BookNotAvailableException: [" + e.getErrorCode() + "] " + e.getMessage());
@@ -159,7 +159,7 @@ public class ValidationAndExceptionTest {
         });
 
         // 3.2 BR02: Chặn trả sách trùng lặp
-        Borrow alreadyReturned = new Borrow(1, 1, 2, LocalDate.now().minusDays(10), LocalDate.now().plusDays(4), LocalDate.now().minusDays(2));
+        Borrow alreadyReturned = new Borrow(1, 1, "1_1", LocalDate.now().minusDays(10), LocalDate.now().plusDays(4), LocalDate.now().minusDays(2));
         runTest("BorrowValidator (BR02): Chặn trả phiếu mượn đã hoàn tất", () -> {
             try {
                 BorrowValidator.validateReturnEligibility(alreadyReturned, 1);
