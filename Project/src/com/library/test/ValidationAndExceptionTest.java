@@ -27,6 +27,7 @@ public class ValidationAndExceptionTest {
         testBorrowValidator();
         testFineValidator();
         testLicenseValidator();
+        testAuthorPublishingAndAccessVerification();
 
         System.out.println("\n===============================================================================");
         System.out.println("  KẾT QUẢ: " + totalPassed + "/" + totalTests + " TEST CASES PASSED HOÀN HẢO!  ");
@@ -188,12 +189,93 @@ public class ValidationAndExceptionTest {
     }
 
     private static void testLicenseValidator() {
-        System.out.println("\n--- [5] Kiểm thử LicenseValidator (BR04, BR12) ---");
+        System.out.println("\n--- [5] Kiểm thử LicenseValidator (BR04, BR12 & Đặc quyền Tác giả) ---");
 
         // 5.1 BR04: Chặn truy cập khi bản quyền hết hạn
         runTest("LicenseValidator (BR04): Chặn truy cập khi gói bản quyền hết hạn", () -> {
             try {
                 LicenseValidator.validateActiveLicense(false, "Lê Văn Cường", "AI Journal 2026", LocalDate.now());
+                return false;
+            } catch (LicenseExpiredException e) {
+                System.out.println("    -> Bắt đúng LicenseExpiredException: [" + e.getErrorCode() + "] " + e.getMessage());
+                return "BR04_LICENSE_EXPIRED".equals(e.getErrorCode());
+            }
+        });
+
+        // 5.2 Đặc quyền Tác giả: Tác giả được tự do truy cập tác phẩm của mình (miễn License)
+        runTest("DigitalJournalService (Author Privilege): Tác giả được tự do truy cập tác phẩm của mình", () -> {
+            try {
+                com.library.service.DigitalJournalService service = new com.library.service.DigitalJournalService();
+                // Person 3 (Prof. John Doe, EXTERNAL_AUTHOR) là tác giả của Journal 3 (Deep Learning), không có GRANTED_LICENSE
+                boolean accessGranted = service.accessDigitalJournal(3, 3, "127.0.0.1", LocalDate.now());
+                System.out.println("    -> Cấp quyền thành công cho tác giả truy cập tác phẩm của mình: " + accessGranted);
+                return accessGranted;
+            } catch (Exception e) {
+                System.out.println("    -> Thất bại: " + e.getMessage());
+                return false;
+            }
+        });
+    }
+
+    private static void testAuthorPublishingAndAccessVerification() {
+        System.out.println("\n--- [6] Kiểm thử Kiểm Nghiệm Đối Tượng EXTERNAL_AUTHOR & UNIVERSITY_MEMBER Xuất Bản & Truy Cập ---");
+
+        com.library.service.DigitalJournalService journalService = new com.library.service.DigitalJournalService();
+        com.library.service.MemberService memberService = new com.library.service.MemberService();
+        com.library.service.BorrowService borrowService = new com.library.service.BorrowService();
+
+        // 6.1 EXTERNAL_AUTHOR (Dr. Robert Martin, ID 5) truy cập Digital Journal (ID 5) do mình xuất bản
+        runTest("EXTERNAL_AUTHOR truy cập bài báo số của chính mình (miễn License)", () -> {
+            try {
+                boolean granted = journalService.accessDigitalJournal(5, 5, "192.168.1.150", LocalDate.now());
+                System.out.println("    -> Cấp quyền thành công cho External Author truy cập tác phẩm của mình: " + granted);
+                return granted;
+            } catch (Exception e) {
+                System.out.println("    -> Lỗi: " + e.getMessage());
+                return false;
+            }
+        });
+
+        // 6.2 EXTERNAL_AUTHOR (Dr. Robert Martin, ID 5) bị chặn mượn sách vật lý về nhà (BR01)
+        runTest("EXTERNAL_AUTHOR bị chặn mượn sách in vật lý về nhà (BR01)", () -> {
+            try {
+                memberService.isEligibleToBorrow(5);
+                return false;
+            } catch (IneligibleMemberException e) {
+                System.out.println("    -> Bắt đúng IneligibleMemberException: [" + e.getErrorCode() + "] " + e.getMessage());
+                return "BR01_INELIGIBLE_MEMBER".equals(e.getErrorCode());
+            }
+        });
+
+        // 6.3 UNIVERSITY_MEMBER (ThS. Hoàng Minh Đức, ID 6) truy cập Digital Journal (ID 6) do mình xuất bản
+        runTest("UNIVERSITY_MEMBER truy cập bài báo số của chính mình (miễn License)", () -> {
+            try {
+                boolean granted = journalService.accessDigitalJournal(6, 6, "192.168.1.160", LocalDate.now());
+                System.out.println("    -> Cấp quyền thành công cho University Member truy cập tác phẩm của mình: " + granted);
+                return granted;
+            } catch (Exception e) {
+                System.out.println("    -> Lỗi: " + e.getMessage());
+                return false;
+            }
+        });
+
+        // 6.4 UNIVERSITY_MEMBER (ThS. Hoàng Minh Đức, ID 6) mượn sách in vật lý do mình xuất bản
+        runTest("UNIVERSITY_MEMBER được mượn sách in vật lý về nhà (Hạn 30 ngày cho Giảng viên)", () -> {
+            try {
+                boolean isEligible = memberService.isEligibleToBorrow(6);
+                int loanDays = memberService.getLoanDurationDays(6);
+                System.out.println("    -> Giảng viên đủ điều kiện mượn sách: " + isEligible + " (Hạn mức: " + loanDays + " ngày)");
+                return isEligible && loanDays == 30;
+            } catch (Exception e) {
+                System.out.println("    -> Lỗi: " + e.getMessage());
+                return false;
+            }
+        });
+
+        // 6.5 Người không phải tác giả (Lê Văn Cường, ID 4, GUEST) truy cập bài báo số của tác giả khác khi không có License
+        runTest("Người ngoài không có License bị chặn truy cập bài báo số của tác giả khác (BR04)", () -> {
+            try {
+                journalService.accessDigitalJournal(4, 5, "192.168.1.100", LocalDate.now());
                 return false;
             } catch (LicenseExpiredException e) {
                 System.out.println("    -> Bắt đúng LicenseExpiredException: [" + e.getErrorCode() + "] " + e.getMessage());

@@ -63,6 +63,27 @@ public class DigitalJournalRepository {
     }
 
     /**
+     * Checks if a person is an author of the specified resource via AUTHOR_OF table.
+     * Authors have inherent rights to access their own publications.
+     */
+    public boolean isAuthorOfResource(int personId, int resourceId) {
+        String sql = "SELECT COUNT(*) FROM AUTHOR_OF WHERE person_id = ? AND resource_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, personId);
+            ps.setInt(2, resourceId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Lỗi khi kiểm tra tư cách tác giả của người dùng " + personId + " cho tài nguyên " + resourceId + ": " + e.getMessage(), e);
+        }
+        return false;
+    }
+
+    /**
      * Finds a DigitalJournal by its unique DOI identifier.
      */
     public DigitalJournal findByDoi(String doi) {

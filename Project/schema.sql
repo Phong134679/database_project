@@ -249,3 +249,31 @@ CREATE TABLE ACCESS_LOG (
     INDEX idx_access_log_journal (journal_resource_id),
     INDEX idx_access_log_timestamp (access_timestamp)
 ) ENGINE = InnoDB;
+
+-- =============================================================================
+-- 7. SQL VIEW ĐỊNH DANH TÁC GIẢ & PHÂN BIỆT THÀNH VIÊN TRƯỜNG VS TÁC GIẢ NGOÀI
+-- Giúp định danh trực quan ai là tác giả, và tác giả đó là UNIVERSITY_MEMBER hay EXTERNAL_AUTHOR
+-- =============================================================================
+
+CREATE OR REPLACE VIEW VIEW_AUTHOR_IDENTIFIER AS
+SELECT 
+    p.person_id,
+    p.ssn,
+    p.name,
+    p.email,
+    p.person_type AS registered_person_type,
+    CASE 
+        WHEN um.person_id IS NOT NULL THEN 'UNIVERSITY_MEMBER'
+        WHEN ea.person_id IS NOT NULL THEN 'EXTERNAL_AUTHOR'
+        ELSE 'GUEST_OR_OTHER'
+    END AS author_affiliation_type,
+    um.member_type AS internal_role,
+    um.department,
+    ea.affiliation AS external_affiliation,
+    COUNT(DISTINCT ao.resource_id) AS total_published_resources
+FROM PERSON p
+INNER JOIN AUTHOR_OF ao ON p.person_id = ao.person_id
+LEFT JOIN UNIVERSITY_MEMBER um ON p.person_id = um.person_id
+LEFT JOIN EXTERNAL_AUTHOR ea ON p.person_id = ea.person_id
+GROUP BY p.person_id, p.ssn, p.name, p.email, p.person_type, 
+         um.person_id, um.member_type, um.department, ea.person_id, ea.affiliation;

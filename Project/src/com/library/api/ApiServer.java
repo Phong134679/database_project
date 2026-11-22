@@ -511,13 +511,20 @@ public class ApiServer {
                 DigitalJournal journal = journalService.getJournalDetails(journalId);
 
                 try {
+                    boolean isAuthor = journalRepo.isAuthorOfResource(personId, journalId);
                     boolean granted = journalService.accessDigitalJournal(personId, journalId, ipAddress, accessDate);
                     Map<String, Object> res = new LinkedHashMap<>();
                     res.put("accessGranted", granted);
                     res.put("isPublic", journal.isPublic());
-                    String msg = journal.isPublic()
-                            ? "Truy cập được phê duyệt (Tài liệu công khai / Open Access - Không giới hạn đối tượng)."
-                            : "Truy cập được phê duyệt (Gói bản quyền còn hiệu lực).";
+                    res.put("isAuthor", isAuthor);
+                    String msg;
+                    if (isAuthor) {
+                        msg = "Truy cập được phê duyệt (Đặc quyền Tác giả: Tác giả được tự do truy cập tác phẩm của mình mà không cần gói bản quyền).";
+                    } else if (journal.isPublic()) {
+                        msg = "Truy cập được phê duyệt (Tài liệu công khai / Open Access - Không giới hạn đối tượng).";
+                    } else {
+                        msg = "Truy cập được phê duyệt (Gói bản quyền còn hiệu lực).";
+                    }
                     res.put("message", msg);
                     res.put("journalId", journalId);
                     res.put("title", journal.getTitle());

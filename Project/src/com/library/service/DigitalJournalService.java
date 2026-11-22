@@ -71,9 +71,11 @@ public class DigitalJournalService {
         Person person = personRepository.findById(personId);
         String userName = person != null ? person.getName() : ("Person ID " + personId);
 
-        // 3. Kiểm tra tính hợp lệ của bản quyền (BR04, BR12) hoặc tài liệu công khai (Open Access)
+        // 3. Kiểm tra tính hợp lệ của bản quyền (BR04, BR12), tài liệu công khai (Open Access),
+        //    hoặc Đặc quyền Tác giả (Tác giả được tự do truy cập tác phẩm của mình)
         boolean isPublic = journal.isPublic();
-        boolean hasActiveLicense = isPublic || grantedLicenseRepository.hasActiveLicenseForJournal(personId, journalResourceId, checkDate);
+        boolean isAuthor = journalRepository.isAuthorOfResource(personId, journalResourceId);
+        boolean hasActiveLicense = isPublic || isAuthor || grantedLicenseRepository.hasActiveLicenseForJournal(personId, journalResourceId, checkDate);
 
         // 4. Ghi nhận nhật ký truy cập vào ACCESS_LOG bất kể thành công hay thất bại (BR13 & FR08)
         AccessLog log = new AccessLog(
@@ -86,9 +88,16 @@ public class DigitalJournalService {
         );
         accessLogRepository.insertLog(log);
 
-        // 5. Trả kết quả: Nếu Open Access hoặc có bản quyền hợp lệ -> Cấp quyền
+        // 5. Trả kết quả: Nếu Open Access, là Tác giả, hoặc có bản quyền hợp lệ -> Cấp quyền
         if (hasActiveLicense) {
-            String accessType = isPublic ? "Tài liệu công khai (Open Access)" : "Gói bản quyền hợp lệ";
+            String accessType;
+            if (isAuthor) {
+                accessType = "Đặc quyền Tác giả (Tác giả tự do truy cập tác phẩm của mình)";
+            } else if (isPublic) {
+                accessType = "Tài liệu công khai (Open Access)";
+            } else {
+                accessType = "Gói bản quyền hợp lệ";
+            }
             System.out.println("[DigitalJournalService] ACCESS GRANTED (" + accessType + "): User [" + userName +
                     "] accessed journal: \"" + journal.getTitle() + "\" (DOI: " + journal.getDoi() + ")");
             System.out.println("    -> Download URL: " + journal.getUrl() + " [Format: " + journal.getFormat() +
