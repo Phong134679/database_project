@@ -152,22 +152,17 @@ public class Main {
         controller.handleReturnRequest(1, LocalDate.of(2026, 10, 25));
 
         // =============================================================================
-        // VALIDATION CASE TEST 04 (FR06 & BR11): Thanh toán trả góp tiền phạt
+        // VALIDATION CASE TEST 04 (FR06 & BR11): Xác nhận thanh toán tiền phạt
         // =============================================================================
         System.out.println("\n-------------------------------------------------------------------------------");
-        System.out.println(">>> VALIDATION CASE TEST 04 (FR06 & BR11): Thanh toán trả góp tiền phạt");
+        System.out.println(">>> VALIDATION CASE TEST 04 (FR06 & BR11): Xác nhận thanh toán tiền phạt");
         System.out.println("-------------------------------------------------------------------------------");
-        // Xem chi tiết tiền phạt và lịch sử thanh toán trước khi trả tiếp
+        // Xem chi tiết tiền phạt trước khi xác nhận
         controller.displayFineDetails(1);
 
-        // Thanh toán đợt 2 cho Fine ID 1: trả thêm 15,000 VND
-        System.out.println("\n--- Thực hiện trả góp đợt 2 (15,000 VND qua Bank Transfer) ---");
-        controller.handleFinePayment(1, BigDecimal.valueOf(15000), "Bank Transfer");
-        controller.displayFineDetails(1);
-
-        // Thanh toán đợt 3 để hoàn tất phiếu phạt
-        System.out.println("\n--- Thực hiện trả nốt phần còn lại để tất toán phiếu phạt ---");
-        controller.handleFinePayment(1, BigDecimal.valueOf(15000), "Credit Card");
+        // Thủ thư trực tiếp xác nhận đã thanh toán mà không có bước tính toán trả góp
+        System.out.println("\n--- Thủ thư xác nhận đã thanh toán cho Phiếu phạt #1 ---");
+        controller.handleFinePayment(1);
         controller.displayFineDetails(1);
 
         System.out.println("\n===============================================================================");

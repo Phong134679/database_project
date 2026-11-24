@@ -341,14 +341,14 @@ async function confirmReturn() {
 // =============================================================================
 async function loadFines() {
   const tbody = document.getElementById('finesBody');
-  tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Đang tải danh sách phiếu phạt...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Đang tải danh sách phiếu phạt...</td></tr>';
   try {
     const res = await fetch(`${API_BASE}/api/fines`);
     if (!res.ok) throw new Error("HTTP " + res.status);
     state.fines = await res.json();
     renderFines(state.fines);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="10" class="empty-state" style="color: var(--danger);">Lỗi tải phiếu phạt: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state" style="color: var(--danger);">Lỗi tải phiếu phạt: ${err.message}</td></tr>`;
   }
 }
 
@@ -356,42 +356,33 @@ function renderFines(list) {
   const tbody = document.getElementById('finesBody');
   let totalCount = 0;
   let unpaidCount = 0;
-  let totalDebt = 0;
+  let paidCount = 0;
 
   if (!list || list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Không có phiếu phạt nào trong hệ thống.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Không có phiếu phạt nào trong hệ thống.</td></tr>';
     document.getElementById('statTotalFines').innerText = '0';
     document.getElementById('statUnpaidFines').innerText = '0';
-    document.getElementById('statTotalDebt').innerText = '0 đ';
+    const paidEl = document.getElementById('statPaidFines');
+    if (paidEl) paidEl.innerText = '0';
     return;
   }
 
   tbody.innerHTML = list.map(f => {
     totalCount++;
-    const rem = Number(f.remainingBalance || 0);
-    if (f.paymentStatus !== 'Completed') {
+    const isCompleted = (f.paymentStatus === 'Completed');
+    if (!isCompleted) {
       unpaidCount++;
-      totalDebt += rem;
-    }
-
-    let statusBadge = '';
-    let payAction = '';
-
-    if (f.paymentStatus === 'Completed') {
-      statusBadge = '<span class="badge badge-success">Đã tất toán</span>';
-      payAction = `<button class="btn btn-secondary btn-sm" onclick="openHistoryModal(${f.fineId})">Lịch sử</button>`;
-    } else if (f.paymentStatus === 'Partially Paid') {
-      statusBadge = '<span class="badge badge-warning">Trả một phần</span>';
-      payAction = `
-        <button class="btn btn-primary btn-sm" onclick="openPayModal(${f.fineId}, '${escapeHtml(f.memberName)}', ${f.totalFineAmount}, ${rem})">Nộp tiếp</button>
-        <button class="btn btn-secondary btn-sm" onclick="openHistoryModal(${f.fineId})">Lịch sử</button>
-      `;
     } else {
-      statusBadge = '<span class="badge badge-danger">Chưa nộp</span>';
-      payAction = `
-        <button class="btn btn-danger btn-sm" onclick="openPayModal(${f.fineId}, '${escapeHtml(f.memberName)}', ${f.totalFineAmount}, ${rem})">Thanh toán</button>
-      `;
+      paidCount++;
     }
+
+    const statusBadge = isCompleted
+      ? '<span class="badge badge-success">Đã thanh toán</span>'
+      : '<span class="badge badge-danger">Chưa thanh toán</span>';
+
+    const payAction = isCompleted
+      ? '<span class="badge badge-success" style="padding: 6px 14px; font-size: 0.85rem; font-weight: 600;">Hoàn tất</span>'
+      : `<button class="btn btn-primary btn-sm" id="btn-pay-${f.fineId}" onclick="confirmFinePayment(${f.fineId})">Xác nhận thanh toán</button>`;
 
     return `
       <tr>
@@ -400,117 +391,56 @@ function renderFines(list) {
         <td><strong>${f.memberName}</strong> (ID: ${f.memberPersonId})</td>
         <td>${f.bookTitle}</td>
         <td><strong>${formatVND(f.totalFineAmount)}</strong></td>
-        <td>${formatVND(f.paidAmount)}</td>
-        <td><strong style="color: ${rem > 0 ? 'var(--danger)' : 'var(--success)'};">${formatVND(rem)}</strong></td>
         <td>${statusBadge}</td>
-        <td>${formatDate(f.dueDate)}</td>
-        <td><div style="display: flex; gap: 6px;">${payAction}</div></td>
+        <td><div id="action-cell-${f.fineId}">${payAction}</div></td>
       </tr>
     `;
   }).join('');
 
   document.getElementById('statTotalFines').innerText = totalCount;
   document.getElementById('statUnpaidFines').innerText = unpaidCount;
-  document.getElementById('statTotalDebt').innerText = formatVND(totalDebt);
+  const paidEl = document.getElementById('statPaidFines');
+  if (paidEl) paidEl.innerText = paidCount;
 }
 
-function openPayModal(fineId, memberName, totalAmount, remaining) {
-  state.activeFine = { fineId, memberName, totalAmount, remaining };
-  const summaryEl = document.getElementById('payFineSummary');
-  summaryEl.innerHTML = `
-    <div style="background: #f1f5f9; padding: 12px; border-radius: var(--radius-sm); font-size: 0.9rem;">
-      Phiếu phạt: <strong>#${fineId}</strong> — Độc giả: <strong>${memberName}</strong><br>
-      Tổng tiền phạt: <strong>${formatVND(totalAmount)}</strong><br>
-      Số dư còn nợ: <strong style="color: var(--danger); font-size: 1.1rem;">${formatVND(remaining)}</strong>
-    </div>
-  `;
-
-  const amountInput = document.getElementById('payAmountInput');
-  amountInput.value = remaining;
-  amountInput.max = remaining;
-
-  document.getElementById('payModal').classList.add('show');
-}
-
-function closePayModal() {
-  document.getElementById('payModal').classList.remove('show');
-  state.activeFine = null;
-}
-
-async function confirmPay() {
-  if (!state.activeFine) return;
-  const amount = parseFloat(document.getElementById('payAmountInput').value);
-  const paymentMethod = document.getElementById('payMethodSelect').value;
-
-  if (isNaN(amount) || amount <= 0) {
-    alert("Vui lòng nhập số tiền thanh toán hợp lệ lớn hơn 0.");
-    return;
+async function confirmFinePayment(fineId) {
+  const actionCell = document.getElementById(`action-cell-${fineId}`);
+  const btn = document.getElementById(`btn-pay-${fineId}`);
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = "Đang xác nhận...";
   }
 
-  const btn = document.getElementById('btnConfirmPay');
-  btn.disabled = true;
-  btn.innerText = "Đang ghi nhận...";
-
   try {
-    const res = await fetch(`${API_BASE}/api/fines/${state.activeFine.fineId}/payments`, {
+    const res = await fetch(`${API_BASE}/api/fines/${fineId}/payments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, paymentMethod })
+      body: JSON.stringify({})
     });
     const data = await res.json();
 
     if (res.ok && data.success) {
-      closePayModal();
-      showAlert('success', `<strong>Thanh toán thành công!</strong> Đã ghi nhận ${formatVND(data.amountPaid)} qua hình thức ${paymentMethod}. Số dư còn lại: ${formatVND(data.remainingBalance)} (Trạng thái mới: ${data.status}).`);
+      showAlert('success', `<strong>Xác nhận thanh toán thành công!</strong> Thủ thư đã xác nhận nộp phạt cho phiếu phạt #${fineId}. Trạng thái cập nhật: Đã thanh toán.`);
+      // Khi đã bấm thanh toán thì ô thanh toán chuyển thành màu xanh ghi chữ hoàn tất
+      if (actionCell) {
+        actionCell.innerHTML = '<span class="badge badge-success" style="padding: 6px 14px; font-size: 0.85rem; font-weight: 600;">Hoàn tất</span>';
+      }
       loadFines();
       loadMembers();
     } else {
-      showAlert('danger', `<strong>Lỗi thanh toán [${data.errorCode || 'ERROR'}]:</strong> ${data.message}`);
+      showAlert('danger', `<strong>Lỗi xác nhận thanh toán [${data.errorCode || 'ERROR'}]:</strong> ${data.message}`);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerText = "Xác nhận thanh toán";
+      }
     }
   } catch (err) {
-    showAlert('danger', `Lỗi mạng khi thanh toán: ${err.message}`);
-  } finally {
-    btn.disabled = false;
-    btn.innerText = "Ghi nhận thanh toán";
-  }
-}
-
-async function openHistoryModal(fineId) {
-  const summaryEl = document.getElementById('historySummary');
-  const tbody = document.getElementById('historyBody');
-  summaryEl.innerHTML = `Đang tải chi tiết phiếu phạt #${fineId}...`;
-  tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Đang nạp dữ liệu...</td></tr>';
-  document.getElementById('historyModal').classList.add('show');
-
-  try {
-    const res = await fetch(`${API_BASE}/api/fines/${fineId}`);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-
-    summaryEl.innerHTML = `
-      Phiếu phạt <strong>#${data.fineId}</strong> | Tổng phạt: <strong>${formatVND(data.totalFineAmount)}</strong> | Còn nợ: <strong style="color: var(--danger);">${formatVND(data.remainingBalance)}</strong> (Trạng thái: <strong>${data.paymentStatus}</strong>)
-    `;
-
-    if (!data.paymentHistory || data.paymentHistory.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Chưa có giao dịch thanh toán nào được ghi nhận.</td></tr>';
-      return;
+    showAlert('danger', `Lỗi mạng khi xác nhận thanh toán: ${err.message}`);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = "Xác nhận thanh toán";
     }
-
-    tbody.innerHTML = data.paymentHistory.map(tx => `
-      <tr>
-        <td><strong>#${tx.transactionId}</strong></td>
-        <td><strong style="color: var(--success);">${formatVND(tx.amountPaid)}</strong></td>
-        <td>${tx.paymentDate ? tx.paymentDate.replace('T', ' ') : '-'}</td>
-        <td><span class="badge badge-secondary">${tx.paymentMethod}</span></td>
-      </tr>
-    `).join('');
-  } catch (err) {
-    summaryEl.innerHTML = `<span style="color: var(--danger);">Lỗi tải thông tin phiếu phạt: ${err.message}</span>`;
   }
-}
-
-function closeHistoryModal() {
-  document.getElementById('historyModal').classList.remove('show');
 }
 
 // =============================================================================

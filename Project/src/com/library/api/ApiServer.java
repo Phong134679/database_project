@@ -315,7 +315,6 @@ public class ApiServer {
                     fineInfo.put("fineId", fine.getFineId());
                     fineInfo.put("amount", fine.getTotalFineAmount());
                     fineInfo.put("status", fine.getPaymentStatus());
-                    fineInfo.put("dueDate", fine.getDueDate() != null ? fine.getDueDate().toString() : null);
                     res.put("fine", fineInfo);
                 }
 
@@ -393,17 +392,12 @@ public class ApiServer {
         private void handleFineDetail(HttpExchange exchange, int fineId) throws IOException {
             try {
                 Fine fine = fineService.getFineDetails(fineId);
-                BigDecimal remaining = fineService.getRemainingBalance(fineId);
-                List<PaymentTransaction> history = fineService.getPaymentHistory(fineId);
 
                 Map<String, Object> res = new LinkedHashMap<>();
                 res.put("fineId", fine.getFineId());
                 res.put("borrowId", fine.getBorrowId());
                 res.put("totalFineAmount", fine.getTotalFineAmount());
-                res.put("remainingBalance", remaining);
                 res.put("paymentStatus", fine.getPaymentStatus());
-                res.put("dueDate", fine.getDueDate() != null ? fine.getDueDate().toString() : null);
-                res.put("paymentHistory", history);
 
                 HttpUtils.sendJson(exchange, 200, res);
             } catch (Exception e) {
@@ -413,29 +407,14 @@ public class ApiServer {
 
         private void handlePayment(HttpExchange exchange, int fineId) throws IOException {
             try {
-                JsonObject json = HttpUtils.readJsonBody(exchange);
-                if (!json.has("amount") && !json.has("amountPaid")) {
-                    HttpUtils.sendError(exchange, 400, "INVALID_INPUT", "Yêu cầu trường 'amount' hoặc 'amountPaid'.");
-                    return;
-                }
-
-                BigDecimal amount = json.has("amount")
-                        ? json.get("amount").getAsBigDecimal()
-                        : json.get("amountPaid").getAsBigDecimal();
-
-                String method = json.has("paymentMethod") ? json.get("paymentMethod").getAsString() : "Cash";
-
-                boolean success = fineService.payFine(fineId, amount, method);
-                BigDecimal remaining = fineService.getRemainingBalance(fineId);
+                // Không có bước tính toán nào, thủ thư trực tiếp xác nhận đã thanh toán
+                boolean success = fineService.confirmPayment(fineId);
                 Fine fine = fineService.getFineDetails(fineId);
 
                 Map<String, Object> res = new LinkedHashMap<>();
                 res.put("success", success);
-                res.put("message", "Thanh toán thành công.");
+                res.put("message", "Thủ thư đã xác nhận thanh toán thành công.");
                 res.put("fineId", fineId);
-                res.put("amountPaid", amount);
-                res.put("paymentMethod", method);
-                res.put("remainingBalance", remaining);
                 res.put("status", fine.getPaymentStatus());
 
                 HttpUtils.sendJson(exchange, 200, res);

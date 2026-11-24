@@ -157,12 +157,12 @@
           <span class="stat-value" id="statTotalFines">0</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Phiếu chưa tất toán</span>
+          <span class="stat-label">Phiếu chưa thanh toán</span>
           <span class="stat-value" id="statUnpaidFines" style="color: var(--danger);">0</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Tổng công nợ còn lại</span>
-          <span class="stat-value" id="statTotalDebt" style="color: var(--warning);">0 đ</span>
+          <span class="stat-label">Phiếu đã thanh toán</span>
+          <span class="stat-value" id="statPaidFines" style="color: var(--success);">0</span>
         </div>
       </div>
 
@@ -182,15 +182,12 @@
                 <th>Độc giả vi phạm</th>
                 <th>Tên sách liên quan</th>
                 <th>Tổng tiền phạt</th>
-                <th>Đã nộp</th>
-                <th>Còn nợ</th>
-                <th>Trạng thái (BR11)</th>
-                <th>Hạn thanh toán</th>
+                <th>Trạng thái nộp phạt</th>
                 <th>Thao tác</th>
               </tr>
             </thead>
             <tbody id="finesBody">
-              <tr><td colspan="10" class="empty-state">Đang tải danh sách tiền phạt...</td></tr>
+              <tr><td colspan="7" class="empty-state">Đang tải danh sách tiền phạt...</td></tr>
             </tbody>
           </table>
         </div>
@@ -325,70 +322,6 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeReturnModal()">Hủy bỏ</button>
         <button class="btn btn-success" id="btnConfirmReturn" onclick="confirmReturn()">Xác nhận trả sách</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================================================================== -->
-  <!-- MODAL 2: THANH TOÁN TIỀN PHẠT (PAY FINE) -->
-  <!-- ==================================================================== -->
-  <div class="modal-backdrop" id="payModal">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>Ghi nhận Thanh toán Tiền phạt (Trả góp BR11)</h3>
-        <button class="alert-close" onclick="closePayModal()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div id="payFineSummary" style="margin-bottom: 16px;"></div>
-
-        <div class="form-group" style="margin-bottom: 14px;">
-          <label for="payAmountInput">Số tiền thanh toán đợt này (VNĐ) (*):</label>
-          <input type="number" id="payAmountInput" min="1000" step="1000" required>
-        </div>
-
-        <div class="form-group">
-          <label for="payMethodSelect">Phương thức thanh toán:</label>
-          <select id="payMethodSelect">
-            <option value="Cash">Tiền mặt tại quầy (Cash)</option>
-            <option value="Bank Transfer">Chuyển khoản ngân hàng (Bank Transfer)</option>
-            <option value="Credit Card">Thẻ thanh toán (Credit Card)</option>
-          </select>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closePayModal()">Hủy bỏ</button>
-        <button class="btn btn-success" id="btnConfirmPay" onclick="confirmPay()">Ghi nhận thanh toán</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================================================================== -->
-  <!-- MODAL 3: LỊCH SỬ THANH TOÁN (PAYMENT HISTORY) -->
-  <!-- ==================================================================== -->
-  <div class="modal-backdrop" id="historyModal">
-    <div class="modal" style="max-width: 600px;">
-      <div class="modal-header">
-        <h3>Lịch sử các đợt thanh toán trả góp</h3>
-        <button class="alert-close" onclick="closeHistoryModal()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div id="historySummary" style="margin-bottom: 14px;"></div>
-        <div class="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Mã GD</th>
-                <th>Số tiền nộp</th>
-                <th>Thời điểm nộp</th>
-                <th>Hình thức</th>
-              </tr>
-            </thead>
-            <tbody id="historyBody"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeHistoryModal()">Đóng</button>
       </div>
     </div>
   </div>

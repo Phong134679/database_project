@@ -290,6 +290,13 @@ public class BorrowRepository {
      * Checks if a member currently has any overdue borrows not yet returned.
      */
     public boolean hasOverdueBorrows(int memberPersonId) {
+        return countOverdueBorrowsByMember(memberPersonId) > 0;
+    }
+
+    /**
+     * Counts the number of overdue borrows for a member that are not yet returned.
+     */
+    public int countOverdueBorrowsByMember(int memberPersonId) {
         String sql = "SELECT COUNT(*) AS overdue_count FROM BORROW " +
                      "WHERE member_person_id = ? AND return_date IS NULL AND due_date < CURRENT_DATE()";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -298,13 +305,13 @@ public class BorrowRepository {
             ps.setInt(1, memberPersonId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    return rs.getInt("overdue_count") > 0;
+                    return rs.getInt("overdue_count");
                 }
             }
         } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi kiểm tra sách quá hạn của thành viên " + memberPersonId + ": " + e.getMessage(), e);
+            throw new DatabaseException("Lỗi khi đếm số sách quá hạn của thành viên " + memberPersonId + ": " + e.getMessage(), e);
         }
-        return false;
+        return 0;
     }
 
     /**

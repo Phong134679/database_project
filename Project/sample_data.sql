@@ -139,15 +139,16 @@ INSERT INTO BORROW (borrow_id, member_person_id, copy_id, borrow_date, due_date,
 (3, 1, '1_2', '2026-09-01', '2026-09-15', '2026-09-20');
 
 -- =============================================================================
--- 10. INSERT FINE & PAYMENT_TRANSACTION (Xử lý vi phạm và trả góp tiền phạt)
+-- 10. INSERT FINE & PAYMENT_TRANSACTION (Xử lý vi phạm và xác nhận thanh toán)
+-- Bỏ due_date ở FINE; bỏ amount_paid và payment_method ở PAYMENT_TRANSACTION
 -- =============================================================================
--- Phiếu phạt cho giao dịch số 3 (trả trễ 5 ngày)
-INSERT INTO FINE (fine_id, borrow_id, total_fine_amount, payment_status, due_date) VALUES
-(1, 3, 50000.00, 'Partially Paid', '2026-10-05');
+-- Phiếu phạt cho giao dịch số 3 (trả trễ, mức phạt 50.000 VND)
+INSERT INTO FINE (fine_id, borrow_id, total_fine_amount, payment_status) VALUES
+(1, 3, 50000.00, 'Unpaid');
 
--- Giao dịch trả tiền đợt 1 (Đã trả 20,000 VND / 50,000 VND - Dùng cho Test 04 & BR11)
-INSERT INTO PAYMENT_TRANSACTION (transaction_id, fine_id, amount_paid, payment_date, payment_method) VALUES
-(1, 1, 20000.00, '2026-09-22 10:30:00', 'Cash');
+-- Giao dịch xác nhận thanh toán
+INSERT INTO PAYMENT_TRANSACTION (transaction_id, fine_id, payment_date) VALUES
+(1, 1, '2026-09-22 10:30:00');
 
 -- =============================================================================
 -- 11. INSERT ACCESS_LOG (Nhật ký truy cập tài nguyên số)

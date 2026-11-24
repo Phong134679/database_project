@@ -108,23 +108,25 @@ public class LibraryController {
     }
 
     /**
-     * Handles installment fine payment (Validation Case Test 04 & BR11).
+     * Handles fine payment confirmation (Validation Case Test 04 & BR11).
+     * Trực tiếp xác nhận thanh toán mà không có bước tính toán trả góp nào.
      */
-    public boolean handleFinePayment(int fineId, BigDecimal amount, String paymentMethod) {
-        System.out.println("\n[LibraryController] Processing fine payment for Fine ID: " + fineId +
-                ", Amount: " + (amount != null ? String.format("%,.0f", amount.doubleValue()) : 0) + " VND, Method: " + paymentMethod);
+    public boolean handleFinePayment(int fineId) {
+        System.out.println("\n[LibraryController] Confirming payment for Fine ID: " + fineId);
         try {
-            boolean success = fineService.payFine(fineId, amount, paymentMethod);
+            boolean success = fineService.confirmPayment(fineId);
             if (success) {
-                BigDecimal remaining = fineService.getRemainingBalance(fineId);
-                System.out.println("[LibraryController] SUCCESS: Payment recorded. Remaining balance: " +
-                        String.format("%,.0f", remaining.doubleValue()) + " VND");
+                System.out.println("[LibraryController] SUCCESS: Fine payment confirmed by librarian. Status: Completed.");
             }
             return success;
         } catch (LibraryException e) {
             System.err.println("[LibraryController] FAILED: " + e);
             return false;
         }
+    }
+
+    public boolean handleFinePayment(int fineId, BigDecimal amount, String paymentMethod) {
+        return handleFinePayment(fineId);
     }
 
     /**
@@ -211,28 +213,24 @@ public class LibraryController {
         }
 
         for (Fine f : fines) {
-            BigDecimal remaining = fineService.getRemainingBalance(f.getFineId());
-            System.out.println(String.format("Fine ID: %d | Borrow ID: %d | Total: %,.0f VND | Remaining: %,.0f VND | Status: %s | Due: %s",
-                    f.getFineId(), f.getBorrowId(), f.getTotalFineAmount().doubleValue(),
-                    remaining.doubleValue(), f.getPaymentStatus(), f.getDueDate()));
+            System.out.println(String.format("Fine ID: %d | Borrow ID: %d | Total: %,.0f VND | Status: %s",
+                    f.getFineId(), f.getBorrowId(), f.getTotalFineAmount().doubleValue(), f.getPaymentStatus()));
         }
     }
 
     /**
-     * Displays detailed payment history and remaining balance for a fine.
+     * Displays detailed payment confirmation info for a fine.
      */
     public void displayFineDetails(int fineId) {
-        System.out.println("\n[LibraryController] === FINE DETAILS & PAYMENT HISTORY (ID: " + fineId + ") ===");
+        System.out.println("\n[LibraryController] === FINE DETAILS & PAYMENT CONFIRMATION (ID: " + fineId + ") ===");
         Fine fine = fineService.getFineDetails(fineId);
         if (fine == null) {
             System.out.println("Fine ID " + fineId + " not found.");
             return;
         }
 
-        BigDecimal remaining = fineService.getRemainingBalance(fineId);
-        System.out.println(String.format("Fine ID: %d | Borrow ID: %d | Total: %,.0f VND | Remaining: %,.0f VND | Status: %s",
-                fine.getFineId(), fine.getBorrowId(), fine.getTotalFineAmount().doubleValue(),
-                remaining.doubleValue(), fine.getPaymentStatus()));
+        System.out.println(String.format("Fine ID: %d | Borrow ID: %d | Total: %,.0f VND | Status: %s",
+                fine.getFineId(), fine.getBorrowId(), fine.getTotalFineAmount().doubleValue(), fine.getPaymentStatus()));
 
         List<PaymentTransaction> history = fineService.getPaymentHistory(fineId);
         if (history == null || history.isEmpty()) {
@@ -240,8 +238,8 @@ public class LibraryController {
         } else {
             System.out.println("    Transactions:");
             for (PaymentTransaction tx : history) {
-                System.out.println(String.format("    -> TX #%d | Paid: %,.0f VND | Date: %s | Method: %s",
-                        tx.getTransactionId(), tx.getAmountPaid().doubleValue(), tx.getPaymentDate(), tx.getPaymentMethod()));
+                System.out.println(String.format("    -> TX #%d | Date: %s",
+                        tx.getTransactionId(), tx.getPaymentDate()));
             }
         }
     }

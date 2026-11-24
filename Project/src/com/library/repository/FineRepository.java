@@ -6,16 +6,18 @@ import com.library.util.DatabaseConnection;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
-import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Repository class handling MySQL data persistence for Fine entity.
+ * Repository class handling MySQL data persistence for FINE entity.
+ * Đã bãi bỏ thuộc tính due_date, chỉ quản lý trạng thái Unpaid và Completed.
  */
 public class FineRepository {
 
@@ -23,13 +25,12 @@ public class FineRepository {
      * Inserts a new Fine record using an active Connection (for transaction support).
      */
     public void insertFine(Connection conn, Fine fine) {
-        String sql = "INSERT INTO FINE (borrow_id, total_fine_amount, payment_status, due_date) " +
-                     "VALUES (?, ?, ?, ?)";
+        String sql = "INSERT INTO FINE (borrow_id, total_fine_amount, payment_status) " +
+                     "VALUES (?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, fine.getBorrowId());
             ps.setBigDecimal(2, fine.getTotalFineAmount());
             ps.setString(3, fine.getPaymentStatus() != null ? fine.getPaymentStatus() : "Unpaid");
-            ps.setDate(4, fine.getDueDate() != null ? Date.valueOf(fine.getDueDate()) : null);
 
             int affectedRows = ps.executeUpdate();
             if (affectedRows > 0) {
@@ -40,30 +41,28 @@ public class FineRepository {
                 }
             }
         } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi thêm mới phiếu phạt (insertFine): " + e.getMessage(), e);
+            throw new DatabaseException("Lỗi khi thêm phiếu phạt (insertFine): " + e.getMessage(), e);
         }
     }
 
     /**
-     * Inserts a new Fine record into MySQL and updates the fine's fineId.
+     * Inserts a new Fine record into MySQL and updates the fineId.
      */
     public void insertFine(Fine fine) {
         try (Connection conn = DatabaseConnection.getConnection()) {
             insertFine(conn, fine);
         } catch (SQLException e) {
-            throw new DatabaseException("Lỗi kết nối khi thêm mới phiếu phạt: " + e.getMessage(), e);
+            throw new DatabaseException("Lỗi kết nối khi thêm phiếu phạt: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Finds a Fine record by primary key fineId.
+     * Finds a Fine by primary key fineId using an active Connection.
      */
-    public Fine findById(int fineId) {
-        String sql = "SELECT fine_id, borrow_id, total_fine_amount, payment_status, due_date " +
+    public Fine findById(Connection conn, int fineId) {
+        String sql = "SELECT fine_id, borrow_id, total_fine_amount, payment_status " +
                      "FROM FINE WHERE fine_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, fineId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -77,10 +76,21 @@ public class FineRepository {
     }
 
     /**
-     * Finds a Fine record by its associated borrowId using an active Connection.
+     * Finds a Fine by primary key fineId.
+     */
+    public Fine findById(int fineId) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            return findById(conn, fineId);
+        } catch (SQLException e) {
+            throw new DatabaseException("Lỗi kết nối khi tra cứu phiếu phạt: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Finds the Fine associated with a specific borrowId using an active Connection.
      */
     public Fine findByBorrowId(Connection conn, int borrowId) {
-        String sql = "SELECT fine_id, borrow_id, total_fine_amount, payment_status, due_date " +
+        String sql = "SELECT fine_id, borrow_id, total_fine_amount, payment_status " +
                      "FROM FINE WHERE borrow_id = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, borrowId);
@@ -90,13 +100,13 @@ public class FineRepository {
                 }
             }
         } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi tra cứu phiếu phạt theo Borrow ID " + borrowId + ": " + e.getMessage(), e);
+            throw new DatabaseException("Lỗi khi tra cứu phiếu phạt theo lượt mượn " + borrowId + ": " + e.getMessage(), e);
         }
         return null;
     }
 
     /**
-     * Finds a Fine record by its associated borrowId.
+     * Finds the Fine associated with a specific borrowId.
      */
     public Fine findByBorrowId(int borrowId) {
         try (Connection conn = DatabaseConnection.getConnection()) {
@@ -111,7 +121,7 @@ public class FineRepository {
      */
     public List<Fine> findAll() {
         List<Fine> list = new ArrayList<>();
-        String sql = "SELECT fine_id, borrow_id, total_fine_amount, payment_status, due_date " +
+        String sql = "SELECT fine_id, borrow_id, total_fine_amount, payment_status " +
                      "FROM FINE ORDER BY fine_id DESC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
@@ -127,13 +137,13 @@ public class FineRepository {
     }
 
     /**
-     * Finds all outstanding fines (status is 'Unpaid' or 'Partially Paid').
+     * Finds all outstanding fines (status is 'Unpaid').
      */
     public List<Fine> findOutstandingFines() {
         List<Fine> list = new ArrayList<>();
-        String sql = "SELECT fine_id, borrow_id, total_fine_amount, payment_status, due_date " +
-                     "FROM FINE WHERE payment_status IN ('Unpaid', 'Partially Paid') " +
-                     "ORDER BY due_date ASC";
+        String sql = "SELECT fine_id, borrow_id, total_fine_amount, payment_status " +
+                     "FROM FINE WHERE payment_status = 'Unpaid' " +
+                     "ORDER BY fine_id ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
@@ -152,15 +162,14 @@ public class FineRepository {
      */
     public void updateFine(Fine fine) {
         String sql = "UPDATE FINE SET borrow_id = ?, total_fine_amount = ?, " +
-                     "payment_status = ?, due_date = ? WHERE fine_id = ?";
+                     "payment_status = ? WHERE fine_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setInt(1, fine.getBorrowId());
             ps.setBigDecimal(2, fine.getTotalFineAmount());
             ps.setString(3, fine.getPaymentStatus());
-            ps.setDate(4, fine.getDueDate() != null ? Date.valueOf(fine.getDueDate()) : null);
-            ps.setInt(5, fine.getFineId());
+            ps.setInt(4, fine.getFineId());
 
             ps.executeUpdate();
         } catch (SQLException e) {
@@ -194,27 +203,24 @@ public class FineRepository {
     }
 
     /**
-     * Retrieves all fines with detailed member, borrow, and payment calculation for UI display.
+     * Retrieves all fines with detailed member, borrow, and resource info for UI display.
+     * Bỏ tính toán số tiền đã nộp và số tiền còn nợ, chỉ hiển thị tổng tiền phạt và trạng thái nộp phạt.
      */
-    public List<java.util.Map<String, Object>> findAllFinesDetailed() {
-        List<java.util.Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT f.fine_id, f.borrow_id, f.total_fine_amount, f.payment_status, f.due_date, " +
-                     "       b.member_person_id, p.name AS member_name, r.title AS book_title, " +
-                     "       COALESCE(SUM(pt.amount_paid), 0.00) AS total_paid " +
+    public List<Map<String, Object>> findAllFinesDetailed() {
+        List<Map<String, Object>> list = new ArrayList<>();
+        String sql = "SELECT f.fine_id, f.borrow_id, f.total_fine_amount, f.payment_status, " +
+                     "       b.member_person_id, p.name AS member_name, r.title AS book_title " +
                      "FROM FINE f " +
                      "JOIN BORROW b ON f.borrow_id = b.borrow_id " +
                      "JOIN PERSON p ON b.member_person_id = p.person_id " +
                      "JOIN BOOK_COPY bc ON b.copy_id = bc.copy_id " +
                      "JOIN RESOURCE r ON bc.resource_id = r.resource_id " +
-                     "LEFT JOIN PAYMENT_TRANSACTION pt ON f.fine_id = pt.fine_id " +
-                     "GROUP BY f.fine_id, f.borrow_id, f.total_fine_amount, f.payment_status, f.due_date, " +
-                     "         b.member_person_id, p.name, r.title " +
                      "ORDER BY f.fine_id DESC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+                Map<String, Object> map = new LinkedHashMap<>();
                 int fineId = rs.getInt("fine_id");
                 map.put("fineId", fineId);
                 map.put("borrowId", rs.getInt("borrow_id"));
@@ -222,17 +228,8 @@ public class FineRepository {
                 map.put("memberName", rs.getString("member_name"));
                 map.put("bookTitle", rs.getString("book_title"));
                 BigDecimal totalAmount = rs.getBigDecimal("total_fine_amount");
-                BigDecimal paidAmount = rs.getBigDecimal("total_paid");
-                BigDecimal remaining = totalAmount.subtract(paidAmount);
-                if (remaining.compareTo(BigDecimal.ZERO) < 0) {
-                    remaining = BigDecimal.ZERO;
-                }
                 map.put("totalFineAmount", totalAmount);
-                map.put("paidAmount", paidAmount);
-                map.put("remainingBalance", remaining);
                 map.put("paymentStatus", rs.getString("payment_status"));
-                Date dDate = rs.getDate("due_date");
-                map.put("dueDate", dDate != null ? dDate.toString() : null);
                 list.add(map);
             }
         } catch (SQLException e) {
@@ -257,12 +254,12 @@ public class FineRepository {
     }
 
     /**
-     * Checks if a member has any unpaid or partially paid fines.
+     * Checks if a member has any unpaid fines (status is not 'Completed').
      */
     public boolean hasUnpaidFinesByMember(int memberPersonId) {
         String sql = "SELECT COUNT(*) AS unpaid_count FROM FINE f " +
                      "JOIN BORROW b ON f.borrow_id = b.borrow_id " +
-                     "WHERE b.member_person_id = ? AND f.payment_status IN ('Unpaid', 'Partially Paid')";
+                     "WHERE b.member_person_id = ? AND f.payment_status != 'Completed'";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -279,13 +276,11 @@ public class FineRepository {
     }
 
     private Fine mapRowToFine(ResultSet rs) throws SQLException {
-        Date dueDateSql = rs.getDate("due_date");
         return new Fine(
                 rs.getInt("fine_id"),
                 rs.getInt("borrow_id"),
                 rs.getBigDecimal("total_fine_amount"),
-                rs.getString("payment_status"),
-                dueDateSql != null ? dueDateSql.toLocalDate() : null
+                rs.getString("payment_status")
         );
     }
 }

@@ -174,7 +174,7 @@ public class ValidationAndExceptionTest {
     private static void testFineValidator() {
         System.out.println("\n--- [4] Kiểm thử FineValidator (BR11) ---");
 
-        Fine settledFine = new Fine(1, 1, BigDecimal.valueOf(50000), "Completed", LocalDate.now().plusDays(10));
+        Fine settledFine = new Fine(1, 1, BigDecimal.valueOf(50000), "Completed");
 
         // 4.1 BR11: Chặn nộp tiền cho phiếu phạt đã tất toán
         runTest("FineValidator (BR11): Chặn thanh toán cho phiếu phạt Completed", () -> {

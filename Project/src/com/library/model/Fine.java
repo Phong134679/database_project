@@ -5,23 +5,30 @@ import java.time.LocalDate;
 
 /**
  * Entity representing a fine penalty associated with a borrow transaction.
+ * Thuộc tính 'due_date' đã được bãi bỏ (không có hạn nộp phí trễ hạn).
+ * Chỉ quản lý trạng thái Unpaid và Completed.
  */
 public class Fine {
     private int fineId;
     private int borrowId;
     private BigDecimal totalFineAmount;
     private String paymentStatus;
-    private LocalDate dueDate;
 
     public Fine() {
     }
 
-    public Fine(int fineId, int borrowId, BigDecimal totalFineAmount, String paymentStatus, LocalDate dueDate) {
+    public Fine(int fineId, int borrowId, BigDecimal totalFineAmount, String paymentStatus) {
         this.fineId = fineId;
         this.borrowId = borrowId;
         this.totalFineAmount = totalFineAmount;
         this.paymentStatus = paymentStatus;
-        this.dueDate = dueDate;
+    }
+
+    /**
+     * Backward-compatible constructor ignoring dueDate.
+     */
+    public Fine(int fineId, int borrowId, BigDecimal totalFineAmount, String paymentStatus, LocalDate dueDate) {
+        this(fineId, borrowId, totalFineAmount, paymentStatus);
     }
 
     public int getFineId() {
@@ -56,14 +63,6 @@ public class Fine {
         this.paymentStatus = paymentStatus;
     }
 
-    public LocalDate getDueDate() {
-        return dueDate;
-    }
-
-    public void setDueDate(LocalDate dueDate) {
-        this.dueDate = dueDate;
-    }
-
     @Override
     public String toString() {
         return "Fine{" +
@@ -71,7 +70,6 @@ public class Fine {
                 ", borrowId=" + borrowId +
                 ", totalFineAmount=" + totalFineAmount +
                 ", paymentStatus='" + paymentStatus + '\'' +
-                ", dueDate=" + dueDate +
                 '}';
     }
 }

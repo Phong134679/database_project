@@ -17,6 +17,7 @@ import java.util.List;
 
 /**
  * Repository class handling MySQL data persistence for PaymentTransaction entity.
+ * Đã bãi bỏ amount_paid và payment_method, chỉ ghi nhận giao dịch thanh toán hoàn tất.
  */
 public class PaymentTransactionRepository {
 
@@ -24,14 +25,11 @@ public class PaymentTransactionRepository {
      * Inserts a new PaymentTransaction record using an active Connection (for transaction support).
      */
     public void insertTransaction(Connection conn, PaymentTransaction transaction) {
-        String sql = "INSERT INTO PAYMENT_TRANSACTION (fine_id, amount_paid, payment_date, payment_method) " +
-                     "VALUES (?, ?, ?, ?)";
+        String sql = "INSERT INTO PAYMENT_TRANSACTION (fine_id, payment_date) VALUES (?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, transaction.getFineId());
-            ps.setBigDecimal(2, transaction.getAmountPaid());
             LocalDateTime pDate = transaction.getPaymentDate() != null ? transaction.getPaymentDate() : LocalDateTime.now();
-            ps.setTimestamp(3, Timestamp.valueOf(pDate));
-            ps.setString(4, transaction.getPaymentMethod());
+            ps.setTimestamp(2, Timestamp.valueOf(pDate));
 
             int affectedRows = ps.executeUpdate();
             if (affectedRows > 0) {
@@ -61,8 +59,7 @@ public class PaymentTransactionRepository {
      * Finds a payment transaction by primary key transactionId.
      */
     public PaymentTransaction findById(int transactionId) {
-        String sql = "SELECT transaction_id, fine_id, amount_paid, payment_date, payment_method " +
-                     "FROM PAYMENT_TRANSACTION WHERE transaction_id = ?";
+        String sql = "SELECT transaction_id, fine_id, payment_date FROM PAYMENT_TRANSACTION WHERE transaction_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -83,8 +80,7 @@ public class PaymentTransactionRepository {
      */
     public List<PaymentTransaction> findByFineId(int fineId) {
         List<PaymentTransaction> list = new ArrayList<>();
-        String sql = "SELECT transaction_id, fine_id, amount_paid, payment_date, payment_method " +
-                     "FROM PAYMENT_TRANSACTION WHERE fine_id = ? ORDER BY payment_date ASC";
+        String sql = "SELECT transaction_id, fine_id, payment_date FROM PAYMENT_TRANSACTION WHERE fine_id = ? ORDER BY payment_date ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -101,24 +97,23 @@ public class PaymentTransactionRepository {
     }
 
     /**
-     * Calculates the total amount paid so far for a specific fine.
+     * Checks if a fine has an associated payment transaction.
      */
-    public BigDecimal getTotalPaidForFine(int fineId) {
-        String sql = "SELECT COALESCE(SUM(amount_paid), 0.00) AS total_paid " +
-                     "FROM PAYMENT_TRANSACTION WHERE fine_id = ?";
+    public boolean hasPaymentTransaction(int fineId) {
+        String sql = "SELECT COUNT(*) AS tx_count FROM PAYMENT_TRANSACTION WHERE fine_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setInt(1, fineId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    return rs.getBigDecimal("total_paid");
+                    return rs.getInt("tx_count") > 0;
                 }
             }
         } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi tính tổng tiền đã trả cho phiếu phạt ID " + fineId + ": " + e.getMessage(), e);
+            throw new DatabaseException("Lỗi khi kiểm tra giao dịch của phiếu phạt ID " + fineId + ": " + e.getMessage(), e);
         }
-        return BigDecimal.ZERO;
+        return false;
     }
 
     /**
@@ -126,8 +121,7 @@ public class PaymentTransactionRepository {
      */
     public List<PaymentTransaction> findAll() {
         List<PaymentTransaction> list = new ArrayList<>();
-        String sql = "SELECT transaction_id, fine_id, amount_paid, payment_date, payment_method " +
-                     "FROM PAYMENT_TRANSACTION ORDER BY transaction_id DESC";
+        String sql = "SELECT transaction_id, fine_id, payment_date FROM PAYMENT_TRANSACTION ORDER BY transaction_id DESC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
@@ -146,9 +140,7 @@ public class PaymentTransactionRepository {
         return new PaymentTransaction(
                 rs.getInt("transaction_id"),
                 rs.getInt("fine_id"),
-                rs.getBigDecimal("amount_paid"),
-                timestamp != null ? timestamp.toLocalDateTime() : null,
-                rs.getString("payment_method")
+                timestamp != null ? timestamp.toLocalDateTime() : null
         );
     }
 }

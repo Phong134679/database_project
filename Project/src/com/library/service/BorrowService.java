@@ -26,7 +26,8 @@ import java.util.Map;
  */
 public class BorrowService {
 
-    private static final double DAILY_PENALTY_RATE = 10000.0; // 10,000 VND per day overdue
+    public static final double OVERDUE_PENALTY_PER_BORROW = 50000.0; // 50.000 VND cho mỗi lượt mượn quá hạn (x 50)
+    private static final double DAILY_PENALTY_RATE = 50000.0;
 
     private BorrowRepository borrowRepository;
     private FineRepository fineRepository;
@@ -157,20 +158,18 @@ public class BorrowService {
             borrowRepository.updateBorrow(conn, borrow);
             borrowRepository.updateCopyAvailability(conn, borrow.getCopyId(), "Available");
 
-            // Test 03 & FR05: Tự động phát sinh phiếu phạt khi trả sách quá hạn
+            // Test 03 & FR05: Tự động phát sinh phiếu phạt khi trả sách quá hạn (Số lượng borrow quá hạn x 50 = 50.000 VND / borrow)
             if (borrow.getDueDate() != null && actualReturnDate.isAfter(borrow.getDueDate())) {
-                long daysLate = ChronoUnit.DAYS.between(borrow.getDueDate(), actualReturnDate);
-                BigDecimal penaltyAmount = BigDecimal.valueOf(daysLate * DAILY_PENALTY_RATE);
+                BigDecimal penaltyAmount = BigDecimal.valueOf(OVERDUE_PENALTY_PER_BORROW);
 
                 // Kiểm tra xem đã có phiếu phạt cho lượt mượn này chưa (tránh trùng lặp)
                 Fine existingFine = fineRepository.findByBorrowId(conn, borrowId);
                 if (existingFine == null) {
-                    LocalDate fineDueDate = actualReturnDate.plusDays(14); // Hạn thanh toán phạt 14 ngày
-                    Fine newFine = new Fine(0, borrowId, penaltyAmount, "Unpaid", fineDueDate);
+                    Fine newFine = new Fine(0, borrowId, penaltyAmount, "Unpaid");
                     fineRepository.insertFine(conn, newFine);
-                    System.out.println("[BorrowService] OVERDUE DETECTED (" + daysLate + " days late). " +
+                    System.out.println("[BorrowService] OVERDUE DETECTED. " +
                             "Generated Fine ID: " + newFine.getFineId() + " (Amount: " +
-                            String.format("%,.0f", penaltyAmount.doubleValue()) + " VND, Due Date: " + fineDueDate + ")");
+                            String.format("%,.0f", penaltyAmount.doubleValue()) + " VND)");
                 }
             }
 
@@ -228,11 +227,19 @@ public class BorrowService {
 
         LocalDate effectiveReturnDate = borrow.getReturnDate() != null ? borrow.getReturnDate() : LocalDate.now();
         if (effectiveReturnDate.isAfter(borrow.getDueDate())) {
-            long daysLate = ChronoUnit.DAYS.between(borrow.getDueDate(), effectiveReturnDate);
-            return daysLate * DAILY_PENALTY_RATE;
+            return OVERDUE_PENALTY_PER_BORROW;
         }
 
         return 0.0;
+    }
+
+    /**
+     * Calculates total overdue penalty for a member based on overdue borrow count x 50.
+     */
+    public double calculateMemberOverduePenalty(int memberPersonId) {
+        DataValidator.validatePositiveId(memberPersonId, "Member Person ID");
+        int overdueCount = borrowRepository.countOverdueBorrowsByMember(memberPersonId);
+        return overdueCount * OVERDUE_PENALTY_PER_BORROW;
     }
 
     /**

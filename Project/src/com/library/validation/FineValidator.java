@@ -7,7 +7,8 @@ import com.library.model.Fine;
 import java.math.BigDecimal;
 
 /**
- * Validator for fines and installment payment transactions (BR02, BR11).
+ * Validator for fines and payment confirmations (BR11).
+ * Không có bước tính toán trả góp, chỉ kiểm tra điều kiện xác nhận thanh toán.
  */
 public final class FineValidator {
 
@@ -27,8 +28,7 @@ public final class FineValidator {
     /**
      * Validates payment eligibility against a fine (BR11).
      */
-    public static void validatePaymentEligibility(Fine fine, BigDecimal amountPaid, int fineId) {
-        DataValidator.validatePositiveAmount(amountPaid, "Số tiền thanh toán");
+    public static void validatePaymentEligibility(Fine fine, int fineId) {
         validateFineExists(fine, fineId);
 
         if ("Completed".equalsIgnoreCase(fine.getPaymentStatus())) {
@@ -36,5 +36,12 @@ public final class FineValidator {
                     "Phiếu phạt ID " + fineId + " đã được tất toán toàn bộ công nợ (Trạng thái: Completed)."
             );
         }
+    }
+
+    /**
+     * Backward-compatible validator accepting an amount parameter.
+     */
+    public static void validatePaymentEligibility(Fine fine, BigDecimal amountPaid, int fineId) {
+        validatePaymentEligibility(fine, fineId);
     }
 }

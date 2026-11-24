@@ -205,25 +205,24 @@ CREATE TABLE BORROW (
 ) ENGINE = InnoDB;
 
 -- Bảng phiếu phạt: FINE
+-- Đã loại bỏ due_date (không có hạn nộp phí trễ hạn), chỉ quản lý trạng thái Unpaid và Completed
 CREATE TABLE FINE (
     fine_id INT AUTO_INCREMENT PRIMARY KEY,
     borrow_id INT NOT NULL,
     total_fine_amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    payment_status ENUM('Unpaid', 'Partially Paid', 'Completed') NOT NULL DEFAULT 'Unpaid',
-    due_date DATE,
+    payment_status ENUM('Unpaid', 'Completed') NOT NULL DEFAULT 'Unpaid',
     CONSTRAINT fk_fine_borrow
         FOREIGN KEY (borrow_id) REFERENCES BORROW(borrow_id)
         ON DELETE CASCADE
         ON UPDATE CASCADE
 ) ENGINE = InnoDB;
 
--- Bảng thanh toán tiền phạt: PAYMENT_TRANSACTION (Hỗ trợ trả góp nhiều lần)
+-- Bảng thanh toán tiền phạt: PAYMENT_TRANSACTION
+-- Đã loại bỏ amount_paid và payment_method, chỉ ghi nhận thời điểm xác nhận thanh toán
 CREATE TABLE PAYMENT_TRANSACTION (
     transaction_id INT AUTO_INCREMENT PRIMARY KEY,
     fine_id INT NOT NULL,
-    amount_paid DECIMAL(10, 2) NOT NULL,
     payment_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    payment_method VARCHAR(50) NOT NULL,
     CONSTRAINT fk_payment_fine
         FOREIGN KEY (fine_id) REFERENCES FINE(fine_id)
         ON DELETE CASCADE

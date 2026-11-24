@@ -4,25 +4,29 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Entity representing an installment payment transaction for a fine.
+ * Entity representing a payment confirmation transaction for a fine.
+ * Thuộc tính 'amount_paid' và 'payment_method' đã được bãi bỏ.
  */
 public class PaymentTransaction {
     private int transactionId;
     private int fineId;
-    private BigDecimal amountPaid;
     private LocalDateTime paymentDate;
-    private String paymentMethod;
 
     public PaymentTransaction() {
     }
 
-    public PaymentTransaction(int transactionId, int fineId, BigDecimal amountPaid,
-                              LocalDateTime paymentDate, String paymentMethod) {
+    public PaymentTransaction(int transactionId, int fineId, LocalDateTime paymentDate) {
         this.transactionId = transactionId;
         this.fineId = fineId;
-        this.amountPaid = amountPaid;
         this.paymentDate = paymentDate;
-        this.paymentMethod = paymentMethod;
+    }
+
+    /**
+     * Backward-compatible constructor ignoring amountPaid and paymentMethod.
+     */
+    public PaymentTransaction(int transactionId, int fineId, BigDecimal amountPaid,
+                              LocalDateTime paymentDate, String paymentMethod) {
+        this(transactionId, fineId, paymentDate);
     }
 
     public int getTransactionId() {
@@ -41,14 +45,6 @@ public class PaymentTransaction {
         this.fineId = fineId;
     }
 
-    public BigDecimal getAmountPaid() {
-        return amountPaid;
-    }
-
-    public void setAmountPaid(BigDecimal amountPaid) {
-        this.amountPaid = amountPaid;
-    }
-
     public LocalDateTime getPaymentDate() {
         return paymentDate;
     }
@@ -57,22 +53,12 @@ public class PaymentTransaction {
         this.paymentDate = paymentDate;
     }
 
-    public String getPaymentMethod() {
-        return paymentMethod;
-    }
-
-    public void setPaymentMethod(String paymentMethod) {
-        this.paymentMethod = paymentMethod;
-    }
-
     @Override
     public String toString() {
         return "PaymentTransaction{" +
                 "transactionId=" + transactionId +
                 ", fineId=" + fineId +
-                ", amountPaid=" + amountPaid +
                 ", paymentDate=" + paymentDate +
-                ", paymentMethod='" + paymentMethod + '\'' +
                 '}';
     }
 }
