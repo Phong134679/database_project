@@ -1,0 +1,130 @@
+dự án đang làm dang dở nội dung sau, kiểm tra đoạn đang bị bỏ dở giữa chừng
+
+# PROMPT 1: AUDIT & DESIGN – LICENSE MANAGEMENT
+
+## 1. Mục tiêu
+
+Hãy khảo sát dự án Digital Library Management System & Open Repository để đánh giá và hoàn thiện thiết kế License Management & Resource Access Authorization.
+
+Đây là giai đoạn phân tích và thiết kế. Chưa được chỉnh sửa mã nguồn, Database hoặc các file dự án.
+
+## 2. Các quyết định nghiệp vụ đã xác nhận
+
+Không được thay đổi các quyết định sau:
+
+1. Phạm vi License: Tùy loại Resource. Không phải Resource nào cũng yêu cầu License.
+2. Nhiều License: AND – nếu Resource yêu cầu nhiều License thì người dùng phải sở hữu tất cả.
+3. Cách cấp License: Kết hợp MANUAL và AUTOMATIC.
+4. Cả hai phương thức cấp đều ghi nhận vào GRANTED_LICENSE.
+5. Không yêu cầu mô phỏng hệ thống bản quyền thương mại.
+
+## 3. Cấu trúc bảng dự kiến
+
+### LICENSE_PACKAGE
+- license_id (PK)
+- license_name
+- provider
+- description
+
+### GRANTED_LICENSE
+- grant_id (PK)
+- person_id (FK)
+- license_id (FK)
+- valid_from
+- valid_to
+- grant_source (đề xuất bổ sung)
+
+grant_source:
+- MANUAL
+- AUTOMATIC
+
+### RESOURCE_LICENSE
+- resource_id (PK, FK)
+- license_id (PK, FK)
+
+## 4. Quy tắc nghiệp vụ
+
+### Cấp MANUAL
+Quản trị viên lựa chọn người dùng, License và thời hạn. Hệ thống tạo bản ghi GRANTED_LICENSE với grant_source = MANUAL.
+
+### Cấp AUTOMATIC
+Hệ thống xác định loại thành viên, đối chiếu quy tắc cấp License tương ứng và tạo bản ghi GRANTED_LICENSE với grant_source = AUTOMATIC.
+
+Không tạo bảng riêng cho hai phương thức cấp nếu không thực sự cần thiết.
+
+### Xác nhận truy cập
+
+Khi người dùng yêu cầu truy cập Resource:
+
+1. Nhận person_id và resource_id.
+2. Lấy tất cả License yêu cầu từ RESOURCE_LICENSE.
+3. Đối chiếu từng License với GRANTED_LICENSE.
+4. Kiểm tra valid_from và valid_to.
+5. Chỉ cho phép nếu tất cả License bắt buộc đều hợp lệ.
+6. Thiếu bất kỳ License nào thì từ chối.
+
+valid_to = NULL nghĩa là không có ngày hết hạn.
+
+### Resource không yêu cầu License
+
+Nếu không có bản ghi trong RESOURCE_LICENSE, bỏ qua điều kiện License.
+
+Không đồng nhất việc không yêu cầu License với quyền truy cập công khai.
+
+## 5. Nhiệm vụ khảo sát
+
+Đọc và đối chiếu:
+
+- ERD hiện tại.
+- Các file SQL tạo bảng.
+- Dữ liệu mẫu.
+- LICENSE_PACKAGE.
+- GRANTED_LICENSE.
+- RESOURCE_LICENSE.
+- PERSON và UNIVERSITY_MEMBER.
+- RESOURCE và DIGITAL_JOURNAL.
+- AUTHOR_OF.
+- ACCESS_LOG.
+- Các Service và Validation liên quan đến License.
+
+Không giả định tên cột, kiểu dữ liệu hoặc quan hệ dựa trên mô tả. Phải kiểm tra cấu trúc thực tế.
+
+## 6. Yêu cầu đánh giá
+
+1. Ba bảng License hiện tại có đáp ứng nghiệp vụ không?
+2. Có cần thêm grant_source không?
+3. Cơ chế cấp MANUAL và AUTOMATIC nên hoạt động thế nào với cấu trúc hiện tại?
+4. Có cần bảng cấu hình cấp License tự động không?
+5. Có cần cơ chế thu hồi License không?
+6. Quy tắc AND có triển khai được trực tiếp bằng cấu trúc hiện tại không?
+7. Cách biểu thị Resource không yêu cầu License có hợp lý không?
+8. Có nguy cơ cấp trùng License hoặc tồn tại các bản ghi cấp quyền mâu thuẫn không?
+9. Có cần bổ sung Function để kiểm tra License không?
+
+## 7. Đầu ra bắt buộc
+
+Chưa chỉnh sửa bất kỳ file nào.
+
+Hãy cung cấp:
+
+1. Sơ đồ quan hệ License hiện tại.
+2. Sơ đồ quan hệ License đề xuất.
+3. Danh sách bảng và cột cần giữ, thêm hoặc thay đổi.
+4. Luồng cấp MANUAL.
+5. Luồng cấp AUTOMATIC.
+6. Luồng xác nhận quyền truy cập.
+7. Các trường hợp kiểm thử nghiệp vụ.
+8. Danh sách những điểm chưa rõ cần người dùng xác nhận.
+
+Ưu tiên thay đổi tối thiểu, bảo toàn ERD và dữ liệu hiện tại.
+
+Chỉ kết thúc giai đoạn này sau khi đưa ra được một thiết kế License nhất quán, có thể triển khai.
+
+1. xác nhận
+2. điều chỉnh sao cho tài liệu nào ngay từ đầu đã cần license thì is_public = false và thủ thư sẽ là người cấp quyền cho id của người dùng hợp lệ (tức là có thể cấp quyền cho guest) việc kiểm tra ngoài đời nằm ngoài phạm vi của hệ thống, hệ thống chỉ đảm nhận vai trò kiểm tra id người dùng đã được cấp quyền hay chưa
+3. giữ nguyên
+4. ngắt kết nối person với granted_license, 1 người dùng có thể nối đến nhiều granted_license
+5. bỏ luôn thuộc tính để tính thời hạn của license, giờ đây chỉ cần quan tâm người dùng có tồn tại license hay không
+6. không, điều chỉnh để khi người dùng có thể truy cập/ mượn vào resource thì is_public TRue HOẶC tồn tại license phù hợp (OR) nếu không đáp ứng cả 2 thì không cho truy cập/ mượn
+7. miễn, lưu ý guest (bao gồm tác giả ngoài) không thể mượn sách vật lý
+8. tạm thời hoàn thiện kiểm tra
