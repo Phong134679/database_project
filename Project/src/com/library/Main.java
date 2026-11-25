@@ -4,18 +4,6 @@ import com.library.util.DatabaseConnection;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-
-/**
- * Main application entry point.
- * <p>
- * Thực hiện hai kiểm tra kết nối:
- * <ol>
- *   <li>Kết nối tài khoản MySQL Server (xác thực username/password).</li>
- *   <li>Kết nối tới database {@code library_db} trong tài khoản đó.</li>
- * </ol>
- * Business logic được xử lý qua {@link com.library.api.ApiServer}
- * kết hợp với Stored Procedures và Views trên MySQL.
- */
 public class Main {
 
     public static void main(String[] args) throws Exception {
