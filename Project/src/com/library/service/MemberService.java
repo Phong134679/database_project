@@ -105,31 +105,10 @@ public class MemberService {
     }
 
     /**
-     * Retrieves all persons with university details and borrow eligibility summary for UI display.
+     * Retrieves all persons with university details and borrow eligibility summary from VIEW_MEMBERS_DETAILED.
      */
     public List<java.util.Map<String, Object>> getAllPersonsDetailed() {
-        List<java.util.Map<String, Object>> persons = personRepository.findAllDetailed();
-        for (java.util.Map<String, Object> p : persons) {
-            int personId = (int) p.get("personId");
-            int activeCount = borrowRepository.countActiveBorrowsByMember(personId);
-            boolean hasOverdue = borrowRepository.hasOverdueBorrows(personId);
-            boolean hasFines = fineRepository.hasUnpaidFinesByMember(personId);
-            p.put("activeBorrowsCount", activeCount);
-            p.put("hasOverdue", hasOverdue);
-            p.put("hasUnpaidFines", hasFines);
-
-            boolean eligible = false;
-            String ineligibilityReason = null;
-            try {
-                isEligibleToBorrow(personId);
-                eligible = true;
-            } catch (com.library.exception.LibraryException ex) {
-                ineligibilityReason = ex.getMessage();
-            }
-            p.put("isEligibleToBorrow", eligible);
-            p.put("ineligibilityReason", ineligibilityReason);
-        }
-        return persons;
+        return personRepository.findAllDetailed();
     }
 
     public PersonRepository getPersonRepository() {

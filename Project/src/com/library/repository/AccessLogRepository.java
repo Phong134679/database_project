@@ -115,14 +115,13 @@ public class AccessLogRepository {
     }
 
     /**
-     * Retrieves all access logs with journal title for UI display.
+     * Retrieves all access logs with journal title from VIEW_ACCESS_LOGS_DETAILED.
      */
     public List<Map<String, Object>> findAllDetailed() {
         List<Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT l.log_id, l.journal_resource_id, r.title AS journal_title, l.ip_address " +
-                     "FROM ACCESS_LOG l " +
-                     "LEFT JOIN RESOURCE r ON l.journal_resource_id = r.resource_id " +
-                     "ORDER BY l.log_id DESC";
+        String sql = "SELECT log_id, journal_resource_id, journal_title, ip_address " +
+                     "FROM VIEW_ACCESS_LOGS_DETAILED " +
+                     "ORDER BY log_id DESC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {

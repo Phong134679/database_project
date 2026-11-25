@@ -206,29 +206,26 @@ public class FineRepository {
      * Retrieves all fines with detailed member, borrow, and resource info for UI display.
      * Bỏ tính toán số tiền đã nộp và số tiền còn nợ, chỉ hiển thị tổng tiền phạt và trạng thái nộp phạt.
      */
+    /**
+     * Retrieves all fines with detailed member and borrow info from VIEW_FINES_DETAILED.
+     */
     public List<Map<String, Object>> findAllFinesDetailed() {
         List<Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT f.fine_id, f.borrow_id, f.total_fine_amount, f.payment_status, " +
-                     "       b.member_person_id, p.name AS member_name, r.title AS book_title " +
-                     "FROM FINE f " +
-                     "JOIN BORROW b ON f.borrow_id = b.borrow_id " +
-                     "JOIN PERSON p ON b.member_person_id = p.person_id " +
-                     "JOIN BOOK_COPY bc ON b.copy_id = bc.copy_id " +
-                     "JOIN RESOURCE r ON bc.resource_id = r.resource_id " +
-                     "ORDER BY f.fine_id DESC";
+        String sql = "SELECT fine_id, borrow_id, member_person_id, member_name, book_title, " +
+                     "       total_fine_amount, payment_status " +
+                     "FROM VIEW_FINES_DETAILED " +
+                     "ORDER BY fine_id DESC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 Map<String, Object> map = new LinkedHashMap<>();
-                int fineId = rs.getInt("fine_id");
-                map.put("fineId", fineId);
+                map.put("fineId", rs.getInt("fine_id"));
                 map.put("borrowId", rs.getInt("borrow_id"));
                 map.put("memberPersonId", rs.getInt("member_person_id"));
                 map.put("memberName", rs.getString("member_name"));
                 map.put("bookTitle", rs.getString("book_title"));
-                BigDecimal totalAmount = rs.getBigDecimal("total_fine_amount");
-                map.put("totalFineAmount", totalAmount);
+                map.put("totalFineAmount", rs.getBigDecimal("total_fine_amount"));
                 map.put("paymentStatus", rs.getString("payment_status"));
                 list.add(map);
             }

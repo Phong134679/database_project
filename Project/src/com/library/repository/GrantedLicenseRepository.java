@@ -199,16 +199,14 @@ public class GrantedLicenseRepository {
     }
 
     /**
-     * Retrieves all granted licenses joined with Person and LicensePackage details for Librarian UI.
+     * Retrieves all granted licenses from VIEW_GRANTED_LICENSES_DETAILED.
      */
     public List<Map<String, Object>> findAllDetailed() {
         List<Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT gl.grant_id, gl.person_id, p.name AS person_name, p.person_type, " +
-                     "       gl.license_id, lp.license_name, lp.provider " +
-                     "FROM GRANTED_LICENSE gl " +
-                     "JOIN PERSON p ON gl.person_id = p.person_id " +
-                     "JOIN LICENSE_PACKAGE lp ON gl.license_id = lp.license_id " +
-                     "ORDER BY gl.grant_id DESC";
+        String sql = "SELECT grant_id, person_id, person_name, person_type, " +
+                     "       license_id, license_name, provider " +
+                     "FROM VIEW_GRANTED_LICENSES_DETAILED " +
+                     "ORDER BY grant_id DESC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {

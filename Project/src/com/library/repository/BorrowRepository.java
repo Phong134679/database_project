@@ -315,18 +315,15 @@ public class BorrowRepository {
     }
 
     /**
-     * Retrieves all borrows joined with Member and Book details for display on UI.
+     * Retrieves all borrows with Member and Book details from VIEW_BORROWS_DETAILED.
      */
     public List<java.util.Map<String, Object>> findAllBorrowsDetailed() {
         List<java.util.Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT b.borrow_id, b.member_person_id, p.name AS member_name, p.person_type, " +
-                     "       b.copy_id, r.title AS book_title, " +
-                     "       b.borrow_date, b.due_date, b.return_date " +
-                     "FROM BORROW b " +
-                     "JOIN PERSON p ON b.member_person_id = p.person_id " +
-                     "JOIN BOOK_COPY bc ON b.copy_id = bc.copy_id " +
-                     "JOIN RESOURCE r ON bc.resource_id = r.resource_id " +
-                     "ORDER BY b.borrow_id DESC";
+        String sql = "SELECT borrow_id, member_person_id, member_name, person_type, " +
+                     "       copy_id, book_title, borrow_date, due_date, return_date, " +
+                     "       is_overdue, status " +
+                     "FROM VIEW_BORROWS_DETAILED " +
+                     "ORDER BY borrow_id DESC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
@@ -344,9 +341,8 @@ public class BorrowRepository {
                 map.put("borrowDate", bDate != null ? bDate.toString() : null);
                 map.put("dueDate", dDate != null ? dDate.toString() : null);
                 map.put("returnDate", rDate != null ? rDate.toString() : null);
-                boolean isOverdue = rDate == null && dDate != null && dDate.toLocalDate().isBefore(LocalDate.now());
-                map.put("isOverdue", isOverdue);
-                map.put("status", rDate != null ? "Returned" : (isOverdue ? "Overdue" : "Active"));
+                map.put("isOverdue", rs.getBoolean("is_overdue"));
+                map.put("status", rs.getString("status"));
                 list.add(map);
             }
         } catch (SQLException e) {

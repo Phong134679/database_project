@@ -109,39 +109,77 @@ public class PersonRepository {
     }
 
     /**
-     * Retrieves all persons with their university membership attributes (if any).
+     * Retrieves all persons with their university membership attributes and
+     * borrow eligibility summary from VIEW_MEMBERS_DETAILED (single query).
      */
     public List<java.util.Map<String, Object>> findAllDetailed() {
         List<java.util.Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT p.person_id, p.ssn, p.name, p.address, p.email, p.phone, p.person_type, " +
-                     "       m.member_id, m.department, m.member_type, m.major, m.academic_rank " +
-                     "FROM PERSON p " +
-                     "LEFT JOIN UNIVERSITY_MEMBER m ON p.person_id = m.person_id " +
-                     "ORDER BY p.person_id ASC";
+        String sql = "SELECT person_id, ssn, name, address, email, phone, person_type, " +
+                     "       member_id, department, member_type, major, academic_rank, " +
+                     "       borrow_quota, active_borrow_count, overdue_borrow_count, " +
+                     "       unpaid_fine_count, is_eligible " +
+                     "FROM VIEW_MEMBERS_DETAILED " +
+                     "ORDER BY person_id ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
                 java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+                String name = rs.getString("name");
+                String personType = rs.getString("person_type");
+                int activeCount = rs.getInt("active_borrow_count");
+                boolean hasOverdue = rs.getInt("overdue_borrow_count") > 0;
+                boolean hasUnpaidFines = rs.getInt("unpaid_fine_count") > 0;
+                int quota = rs.getInt("borrow_quota");
+                boolean isEligible = rs.getBoolean("is_eligible");
+
                 map.put("personId", rs.getInt("person_id"));
                 map.put("ssn", rs.getString("ssn"));
-                map.put("name", rs.getString("name"));
+                map.put("name", name);
                 map.put("address", rs.getString("address"));
                 map.put("email", rs.getString("email"));
                 map.put("phone", rs.getString("phone"));
-                map.put("personType", rs.getString("person_type"));
+                map.put("personType", personType);
                 map.put("memberId", rs.getString("member_id"));
                 map.put("department", rs.getString("department"));
                 map.put("memberType", rs.getString("member_type"));
                 map.put("major", rs.getString("major"));
                 map.put("academicRank", rs.getString("academic_rank"));
+                map.put("activeBorrowsCount", activeCount);
+                map.put("hasOverdue", hasOverdue);
+                map.put("hasUnpaidFines", hasUnpaidFines);
+                map.put("isEligibleToBorrow", isEligible);
+                map.put("ineligibilityReason", buildIneligibilityReason(
+                        name, personType, hasOverdue, hasUnpaidFines, activeCount, quota, isEligible));
                 list.add(map);
             }
         } catch (SQLException e) {
             throw new DatabaseException("Lỗi khi truy xuất danh sách người dùng chi tiết: " + e.getMessage(), e);
         }
         return list;
+    }
+
+    private String buildIneligibilityReason(String name, String personType, boolean hasOverdue,
+                                            boolean hasUnpaidFines, int activeCount, int quota, boolean isEligible) {
+        if (isEligible) {
+            return null;
+        }
+        if (!"STUDENT".equalsIgnoreCase(personType) && !"FACULTY".equalsIgnoreCase(personType)) {
+            return "Độc giả [" + name + "] mang vai trò '" + personType
+                    + "' là đối tượng bên ngoài, chỉ được phép đọc tài liệu tại chỗ theo quy chế BR01.";
+        }
+        if (hasOverdue) {
+            return "Độc giả [" + name + "] đang có sách mượn quá hạn chưa trả (BR05).";
+        }
+        if (hasUnpaidFines) {
+            return "Độc giả [" + name + "] có phiếu phạt quá hạn chưa thanh toán. "
+                    + "Yêu cầu tất toán công nợ phạt trước khi tiếp tục mượn mới (BR05).";
+        }
+        if (activeCount >= quota) {
+            return "Độc giả [" + name + "] đã đạt hạn mức mượn tối đa (" + activeCount + "/" + quota + ") theo quy chế BR05.";
+        }
+        return "Không đủ điều kiện mượn sách.";
     }
 
     private Person mapRowToPerson(ResultSet rs) throws SQLException {
