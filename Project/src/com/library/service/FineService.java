@@ -1,19 +1,19 @@
 package com.library.service;
 
-import com.library.exception.DatabaseException;
-import com.library.exception.LibraryException;
 import com.library.model.Fine;
 import com.library.model.PaymentTransaction;
 import com.library.repository.FineRepository;
 import com.library.repository.PaymentTransactionRepository;
 import com.library.util.DatabaseConnection;
+import com.library.util.SqlExceptionMapper;
 import com.library.validation.DataValidator;
 import com.library.validation.FineValidator;
 
 import java.math.BigDecimal;
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.time.LocalDateTime;
+import java.sql.Types;
 import java.util.List;
 import java.util.Map;
 
@@ -58,55 +58,27 @@ public class FineService {
     }
 
     /**
-     * Confirms that a fine has been fully settled and paid by librarian.
-     * Trực tiếp thay đổi payment_status thành 'Completed' mà không có bước tính toán nào.
+     * Confirms that a fine has been fully settled by delegating validation and atomic
+     * transaction recording + status update to MySQL Stored Procedure sp_confirm_fine_payment.
      */
     public boolean confirmPayment(int fineId) {
         DataValidator.validatePositiveId(fineId, "Fine ID");
 
-        Fine fine = fineRepository.findById(fineId);
-        FineValidator.validatePaymentEligibility(fine, fineId);
+        String sql = "{CALL sp_confirm_fine_payment(?, ?)}";
+        try (Connection conn = DatabaseConnection.getConnection();
+             CallableStatement cs = conn.prepareCall(sql)) {
 
-        PaymentTransaction tx = new PaymentTransaction(0, fineId, LocalDateTime.now());
+            cs.setInt(1, fineId);
+            cs.registerOutParameter(2, Types.INTEGER);
+            cs.execute();
 
-        Connection conn = null;
-        try {
-            conn = DatabaseConnection.getConnection();
-            conn.setAutoCommit(false);
-
-            // 1. Ghi nhận giao dịch xác nhận thanh toán
-            paymentTransactionRepository.insertTransaction(conn, tx);
-
-            // 2. Trực tiếp cập nhật trạng thái phiếu phạt thành Completed
-            fineRepository.updatePaymentStatus(conn, fineId, "Completed");
-            fine.setPaymentStatus("Completed");
-
-            conn.commit();
-
+            int transactionId = cs.getInt(2);
             System.out.println("[FineService] SUCCESS: Fine #" + fineId +
-                    " confirmed as PAID (Completed) by librarian (Transaction ID: " + tx.getTransactionId() + ").");
+                    " confirmed as PAID (Completed) by librarian (Transaction ID: " + transactionId + ").");
             return true;
-        } catch (Exception e) {
-            if (conn != null) {
-                try {
-                    conn.rollback();
-                } catch (SQLException rollbackEx) {
-                    System.err.println("[FineService] Rollback failed: " + rollbackEx.getMessage());
-                }
-            }
-            if (e instanceof LibraryException) {
-                throw (LibraryException) e;
-            }
-            throw new DatabaseException("Lỗi giao dịch khi xác nhận nộp phạt: " + e.getMessage(), e);
-        } finally {
-            if (conn != null) {
-                try {
-                    conn.setAutoCommit(true);
-                    conn.close();
-                } catch (SQLException closeEx) {
-                    // ignore
-                }
-            }
+        } catch (SQLException e) {
+            SqlExceptionMapper.throwMapped(e);
+            return false;
         }
     }
 
