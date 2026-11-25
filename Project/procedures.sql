@@ -143,4 +143,138 @@ BEGIN
     SET p_deleted = ROW_COUNT();
 END//
 
+-- =============================================================================
+-- sp_borrow_book: Xử lý giao dịch mượn sách vật lý (BR01, BR05, BR10, License)
+-- Khóa theo thứ tự PERSON -> BOOK_COPY bằng FOR UPDATE để chống race condition
+-- =============================================================================
+DROP PROCEDURE IF EXISTS sp_borrow_book//
+CREATE PROCEDURE sp_borrow_book(
+    IN  p_member_id INT,
+    IN  p_copy_id   INT,
+    OUT p_borrow_id INT,
+    OUT p_due_date  DATE
+)
+BEGIN
+    DECLARE v_person_type    VARCHAR(30);
+    DECLARE v_overdue_count  INT DEFAULT 0;
+    DECLARE v_fine_count     INT DEFAULT 0;
+    DECLARE v_active_borrows INT DEFAULT 0;
+    DECLARE v_quota          INT DEFAULT 0;
+    DECLARE v_loan_days      INT DEFAULT 14;
+    DECLARE v_resource_id    INT;
+    DECLARE v_copy_status    VARCHAR(20);
+    DECLARE v_is_public      BOOLEAN DEFAULT FALSE;
+    DECLARE v_borrow_date    DATE;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    SET p_borrow_id = 0;
+    SET p_due_date = NULL;
+
+    START TRANSACTION;
+
+        -- 1. Khóa dòng PERSON để tuần tự hóa kiểm tra quota/overdue/fine theo từng thành viên
+        SELECT person_type
+        INTO v_person_type
+        FROM PERSON
+        WHERE person_id = p_member_id
+        FOR UPDATE;
+
+        IF v_person_type IS NULL THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = '[NOT_FOUND] Không tìm thấy thành viên với ID đã cho.';
+        END IF;
+
+        -- 2. BR01: Chỉ STUDENT và FACULTY được phép mượn sách vật lý
+        IF v_person_type NOT IN ('STUDENT', 'FACULTY') THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = '[BR01_INELIGIBLE_MEMBER] Chỉ STUDENT và FACULTY mới được phép mượn sách vật lý.';
+        END IF;
+
+        -- 3. BR05-a: Kiểm tra sách quá hạn chưa trả
+        SELECT COUNT(*) INTO v_overdue_count
+        FROM BORROW
+        WHERE member_person_id = p_member_id
+          AND return_date IS NULL
+          AND due_date < CURDATE();
+
+        IF v_overdue_count > 0 THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = '[BR05_OVERDUE_PENDING] Thành viên đang có sách mượn quá hạn chưa trả.';
+        END IF;
+
+        -- 4. BR05-b: Kiểm tra phiếu phạt chưa thanh toán
+        SELECT COUNT(*) INTO v_fine_count
+        FROM FINE f
+        INNER JOIN BORROW b ON f.borrow_id = b.borrow_id
+        WHERE b.member_person_id = p_member_id
+          AND f.payment_status <> 'Completed';
+
+        IF v_fine_count > 0 THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = '[BR05_OUTSTANDING_FINE] Thành viên có phiếu phạt chưa thanh toán.';
+        END IF;
+
+        -- 5. BR05-c: Kiểm tra hạn mức mượn (STUDENT=3 / 14 ngày, FACULTY=10 / 30 ngày)
+        IF v_person_type = 'FACULTY' THEN
+            SET v_quota = 10;
+            SET v_loan_days = 30;
+        ELSE
+            SET v_quota = 3;
+            SET v_loan_days = 14;
+        END IF;
+
+        SELECT COUNT(*) INTO v_active_borrows
+        FROM BORROW
+        WHERE member_person_id = p_member_id
+          AND return_date IS NULL;
+
+        IF v_active_borrows >= v_quota THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = '[BR05_QUOTA_EXCEEDED] Thành viên đã đạt giới hạn số lượng sách mượn.';
+        END IF;
+
+        -- 6. BR10: Khóa dòng BOOK_COPY để chống 2 giao dịch cùng mượn 1 bản sao
+        SELECT bc.resource_id, bc.availability_status, r.is_public
+        INTO v_resource_id, v_copy_status, v_is_public
+        FROM BOOK_COPY bc
+        INNER JOIN RESOURCE r ON bc.resource_id = r.resource_id
+        WHERE bc.copy_id = p_copy_id
+        FOR UPDATE;
+
+        IF v_resource_id IS NULL THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = '[BR10_BOOK_NOT_AVAILABLE] Bản sao sách không tồn tại.';
+        END IF;
+
+        IF v_copy_status <> 'Available' THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = '[BR10_BOOK_NOT_AVAILABLE] Bản sao sách hiện không sẵn sàng để mượn.';
+        END IF;
+
+        -- 7. Kiểm tra quyền truy cập Resource (is_public OR fn_has_all_required_licenses)
+        IF v_is_public = FALSE AND fn_has_all_required_licenses(p_member_id, v_resource_id) = FALSE THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = '[BR04_LICENSE_EXPIRED] Thành viên chưa sở hữu đầy đủ License bắt buộc cho tài nguyên này.';
+        END IF;
+
+        -- 8. Tạo phiếu mượn và cập nhật trạng thái bản sao
+        SET v_borrow_date = CURDATE();
+        SET p_due_date = DATE_ADD(v_borrow_date, INTERVAL v_loan_days DAY);
+
+        INSERT INTO BORROW (member_person_id, copy_id, borrow_date, due_date)
+        VALUES (p_member_id, p_copy_id, v_borrow_date, p_due_date);
+        SET p_borrow_id = LAST_INSERT_ID();
+
+        UPDATE BOOK_COPY
+        SET availability_status = 'Borrowed'
+        WHERE copy_id = p_copy_id;
+
+    COMMIT;
+END//
+
 DELIMITER ;
