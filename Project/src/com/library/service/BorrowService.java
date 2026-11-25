@@ -27,7 +27,6 @@ import java.util.Map;
 public class BorrowService {
 
     public static final double OVERDUE_PENALTY_PER_BORROW = 50000.0; // 50.000 VND cho mỗi lượt mượn quá hạn (x 50)
-    private static final double DAILY_PENALTY_RATE = 50000.0;
 
     private BorrowRepository borrowRepository;
     private FineRepository fineRepository;
