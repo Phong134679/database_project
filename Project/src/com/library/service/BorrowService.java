@@ -1,27 +1,21 @@
 package com.library.service;
 
-import com.library.exception.DatabaseException;
-import com.library.exception.InvalidDateRangeException;
-import com.library.exception.LibraryException;
+import com.library.exception.BookNotAvailableException;
 import com.library.model.Borrow;
-import com.library.model.Fine;
-import com.library.model.Person;
-import com.library.model.Resource;
 import com.library.repository.BorrowRepository;
 import com.library.repository.FineRepository;
-import com.library.repository.GrantedLicenseRepository;
-import com.library.repository.PersonRepository;
-import com.library.repository.ResourceRepository;
 import com.library.util.DatabaseConnection;
+import com.library.util.SqlExceptionMapper;
 import com.library.validation.BorrowValidator;
 import com.library.validation.DataValidator;
-import com.library.validation.LicenseValidator;
 
 import java.math.BigDecimal;
+import java.sql.CallableStatement;
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -38,124 +32,66 @@ public class BorrowService {
     private BorrowRepository borrowRepository;
     private FineRepository fineRepository;
     private MemberService memberService;
-    private ResourceRepository resourceRepository;
-    private GrantedLicenseRepository grantedLicenseRepository;
-    private PersonRepository personRepository;
 
     public BorrowService() {
         this.borrowRepository = new BorrowRepository();
         this.fineRepository = new FineRepository();
         this.memberService = new MemberService();
-        this.resourceRepository = new ResourceRepository();
-        this.grantedLicenseRepository = new GrantedLicenseRepository();
-        this.personRepository = new PersonRepository();
     }
 
     public BorrowService(BorrowRepository borrowRepository) {
         this.borrowRepository = borrowRepository;
         this.fineRepository = new FineRepository();
         this.memberService = new MemberService();
-        this.resourceRepository = new ResourceRepository();
-        this.grantedLicenseRepository = new GrantedLicenseRepository();
-        this.personRepository = new PersonRepository();
     }
 
     public BorrowService(BorrowRepository borrowRepository, FineRepository fineRepository) {
         this.borrowRepository = borrowRepository;
         this.fineRepository = fineRepository;
         this.memberService = new MemberService();
-        this.resourceRepository = new ResourceRepository();
-        this.grantedLicenseRepository = new GrantedLicenseRepository();
-        this.personRepository = new PersonRepository();
     }
 
     public BorrowService(BorrowRepository borrowRepository, FineRepository fineRepository, MemberService memberService) {
         this.borrowRepository = borrowRepository;
         this.fineRepository = fineRepository;
         this.memberService = memberService;
-        this.resourceRepository = new ResourceRepository();
-        this.grantedLicenseRepository = new GrantedLicenseRepository();
-        this.personRepository = new PersonRepository();
     }
 
     /**
-     * Processes a new book borrowing transaction within a single atomic Database Transaction.
-     * Enforces Test 01 (BR01: external user rejection), BR05 (role-based quotas and durations),
-     * and BR10 (physical book copy tracking).
-     * Throws specific BusinessException/ValidationException on failure, returns true on success.
+     * Processes a new book borrowing transaction by delegating business checks
+     * and atomic updates to MySQL Stored Procedure sp_borrow_book.
      */
     public boolean processNewBorrow(int memberId, String copyId) {
-        // 1. Kiểm tra tính hợp lệ của tham số ID
         DataValidator.validatePositiveId(memberId, "Member Person ID");
         DataValidator.validateNonEmptyString(copyId, "Copy ID");
 
-        // 2. Kiểm tra tính hợp lệ của người mượn (Test 01, BR01, BR05)
-        //    Lưu ý: GUEST và EXTERNAL_AUTHOR luôn bị chặn mượn sách vật lý (không có đặc quyền AUTHOR_OF).
-        memberService.isEligibleToBorrow(memberId);
-
-        // 3. Kiểm tra quyền truy cập Resource của bản sao sách (RESOURCE.is_public OR HAS_ALL_REQUIRED_LICENSES)
-        Integer resourceId = resourceRepository.findResourceIdByCopyId(copyId);
-        if (resourceId == null) {
-            BorrowValidator.validateCopyAvailable(false, copyId);
-        }
-        Resource resource = resourceRepository.findById(resourceId);
-        LicenseValidator.validateResourceExists(resource, resourceId);
-        if (!resource.isPublic()) {
-            boolean hasAllLicenses = grantedLicenseRepository.hasAllRequiredLicenses(memberId, resourceId);
-            if (!hasAllLicenses) {
-                Person p = personRepository.findById(memberId);
-                String userName = p != null ? p.getName() : ("Person ID " + memberId);
-                LicenseValidator.validateActiveLicense(false, userName, resource.getTitle());
-            }
-        }
-
-        // 4. Phân định thời hạn mượn theo vai trò thành viên (BR05)
-        int loanDays = memberService.getLoanDurationDays(memberId);
-        LocalDate today = LocalDate.now();
-        LocalDate dueDate = today.plusDays(loanDays);
-
-        Borrow borrow = new Borrow(0, memberId, copyId, today, dueDate, null);
-
-        // 4. Thực thi kiểm tra trạng thái và tạo lượt mượn trong cùng 1 Transaction
-        Connection conn = null;
+        int numericCopyId;
         try {
-            conn = DatabaseConnection.getConnection();
-            conn.setAutoCommit(false);
+            numericCopyId = Integer.parseInt(copyId.trim());
+        } catch (NumberFormatException e) {
+            throw new BookNotAvailableException("Bản sao sách [" + copyId + "] không tồn tại.");
+        }
+        DataValidator.validatePositiveId(numericCopyId, "Copy ID");
 
-            // Kiểm tra trạng thái bản sao sách trong transaction (BR10)
-            boolean isAvailable = borrowRepository.isCopyAvailable(conn, copyId);
-            BorrowValidator.validateCopyAvailable(isAvailable, copyId);
+        String sql = "{CALL sp_borrow_book(?, ?, ?, ?)}";
+        try (Connection conn = DatabaseConnection.getConnection();
+             CallableStatement cs = conn.prepareCall(sql)) {
 
-            borrowRepository.insertBorrow(conn, borrow);
-            borrowRepository.updateCopyAvailability(conn, copyId, "Borrowed");
+            cs.setInt(1, memberId);
+            cs.setInt(2, numericCopyId);
+            cs.registerOutParameter(3, Types.INTEGER);
+            cs.registerOutParameter(4, Types.DATE);
+            cs.execute();
 
-            conn.commit();
-
-            System.out.println("[BorrowService] SUCCESS: Borrow ID " + borrow.getBorrowId() +
-                    " created for Member " + memberId + ", Copy " + copyId +
-                    " (Loan Duration: " + loanDays + " days, Due Date: " + dueDate + ")");
+            int borrowId = cs.getInt(3);
+            Date dueDate = cs.getDate(4);
+            System.out.println("[BorrowService] SUCCESS: Borrow ID " + borrowId +
+                    " created for Member " + memberId + ", Copy " + numericCopyId +
+                    " (Due Date: " + dueDate + ")");
             return true;
-        } catch (Exception e) {
-            if (conn != null) {
-                try {
-                    conn.rollback();
-                } catch (SQLException rollbackEx) {
-                    System.err.println("[BorrowService] Rollback failed: " + rollbackEx.getMessage());
-                }
-            }
-            if (e instanceof LibraryException) {
-                throw (LibraryException) e;
-            }
-            throw new DatabaseException("Lỗi giao dịch khi mượn sách: " + e.getMessage(), e);
-        } finally {
-            if (conn != null) {
-                try {
-                    conn.setAutoCommit(true);
-                    conn.close();
-                } catch (SQLException closeEx) {
-                    // ignore
-                }
-            }
+        } catch (SQLException e) {
+            SqlExceptionMapper.throwMapped(e);
+            return false;
         }
     }
 
@@ -164,76 +100,43 @@ public class BorrowService {
     }
 
     /**
-     * Processes book return using the current date as returnDate.
+     * Processes book return using MySQL server CURDATE() when returnDate is null.
      */
     public boolean returnBook(int borrowId) {
-        return returnBook(borrowId, LocalDate.now());
+        return returnBook(borrowId, null);
     }
 
     /**
-     * Processes book return with a specified return date within a single atomic Database Transaction.
-     * Automatically generates a FINE record if returned past due_date (Validation Case Test 03 & FR05).
-     * Throws specific BusinessException/ValidationException on failure, returns true on success.
+     * Processes book return by delegating business checks, copy release, and
+     * automatic overdue fine creation to MySQL Stored Procedure sp_return_book.
      */
     public boolean returnBook(int borrowId, LocalDate returnDate) {
         DataValidator.validatePositiveId(borrowId, "Borrow ID");
 
-        Borrow borrow = borrowRepository.findById(borrowId);
-        BorrowValidator.validateReturnEligibility(borrow, borrowId);
+        String sql = "{CALL sp_return_book(?, ?, ?, ?)}";
+        try (Connection conn = DatabaseConnection.getConnection();
+             CallableStatement cs = conn.prepareCall(sql)) {
 
-        LocalDate actualReturnDate = returnDate != null ? returnDate : LocalDate.now();
-        if (borrow.getBorrowDate() != null && actualReturnDate.isBefore(borrow.getBorrowDate())) {
-            throw new InvalidDateRangeException("Ngày trả (" + actualReturnDate + ") không thể trước ngày mượn (" + borrow.getBorrowDate() + ").");
-        }
-
-        borrow.setReturnDate(actualReturnDate);
-
-        Connection conn = null;
-        try {
-            conn = DatabaseConnection.getConnection();
-            conn.setAutoCommit(false);
-
-            borrowRepository.updateBorrow(conn, borrow);
-            borrowRepository.updateCopyAvailability(conn, borrow.getCopyId(), "Available");
-
-            // Test 03 & FR05: Tự động phát sinh phiếu phạt khi trả sách quá hạn (Số lượng borrow quá hạn x 50 = 50.000 VND / borrow)
-            if (borrow.getDueDate() != null && actualReturnDate.isAfter(borrow.getDueDate())) {
-                BigDecimal penaltyAmount = BigDecimal.valueOf(OVERDUE_PENALTY_PER_BORROW);
-
-                // Kiểm tra xem đã có phiếu phạt cho lượt mượn này chưa (tránh trùng lặp)
-                Fine existingFine = fineRepository.findByBorrowId(conn, borrowId);
-                if (existingFine == null) {
-                    Fine newFine = new Fine(0, borrowId, penaltyAmount, "Unpaid");
-                    fineRepository.insertFine(conn, newFine);
-                    System.out.println("[BorrowService] OVERDUE DETECTED. " +
-                            "Generated Fine ID: " + newFine.getFineId() + " (Amount: " +
-                            String.format("%,.0f", penaltyAmount.doubleValue()) + " VND)");
-                }
+            cs.setInt(1, borrowId);
+            if (returnDate != null) {
+                cs.setDate(2, Date.valueOf(returnDate));
+            } else {
+                cs.setNull(2, Types.DATE);
             }
+            cs.registerOutParameter(3, Types.INTEGER);
+            cs.registerOutParameter(4, Types.DECIMAL);
+            cs.execute();
 
-            conn.commit();
+            int fineId = cs.getInt(3);
+            BigDecimal fineAmount = cs.getBigDecimal(4);
+            if (fineId > 0) {
+                System.out.println("[BorrowService] OVERDUE DETECTED. Generated Fine ID: " + fineId +
+                        " (Amount: " + String.format("%,.0f", fineAmount != null ? fineAmount.doubleValue() : 0.0) + " VND)");
+            }
             return true;
-        } catch (Exception e) {
-            if (conn != null) {
-                try {
-                    conn.rollback();
-                } catch (SQLException rollbackEx) {
-                    System.err.println("[BorrowService] Rollback failed: " + rollbackEx.getMessage());
-                }
-            }
-            if (e instanceof LibraryException) {
-                throw (LibraryException) e;
-            }
-            throw new DatabaseException("Lỗi giao dịch khi trả sách: " + e.getMessage(), e);
-        } finally {
-            if (conn != null) {
-                try {
-                    conn.setAutoCommit(true);
-                    conn.close();
-                } catch (SQLException closeEx) {
-                    // ignore
-                }
-            }
+        } catch (SQLException e) {
+            SqlExceptionMapper.throwMapped(e);
+            return false;
         }
     }
 
