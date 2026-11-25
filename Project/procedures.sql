@@ -366,4 +366,172 @@ BEGIN
     COMMIT;
 END//
 
+-- =============================================================================
+-- sp_confirm_fine_payment: Xác nhận thanh toán phiếu phạt (BR11)
+-- Khóa FINE bằng FOR UPDATE trong transaction để chống thanh toán trùng
+-- =============================================================================
+DROP PROCEDURE IF EXISTS sp_confirm_fine_payment//
+CREATE PROCEDURE sp_confirm_fine_payment(
+    IN  p_fine_id        INT,
+    OUT p_transaction_id INT
+)
+BEGIN
+    DECLARE v_payment_status VARCHAR(30);
+    DECLARE v_total_amount   DECIMAL(10,2);
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    SET p_transaction_id = 0;
+
+    START TRANSACTION;
+
+        -- 1. Khóa dòng FINE trước khi kiểm tra trạng thái
+        SELECT payment_status, total_fine_amount
+        INTO v_payment_status, v_total_amount
+        FROM FINE
+        WHERE fine_id = p_fine_id
+        FOR UPDATE;
+
+        IF v_payment_status IS NULL THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = '[NOT_FOUND] Không tìm thấy phiếu phạt với ID đã cho.';
+        END IF;
+
+        -- 2. BR11: Không cho phép thanh toán phiếu phạt đã Completed
+        IF v_payment_status = 'Completed' THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = '[BR11_FINE_ALREADY_SETTLED] Phiếu phạt này đã được thanh toán hoàn tất trước đó.';
+        END IF;
+
+        -- 3. Ghi nhận giao dịch thanh toán (khớp cột NOT NULL trên PAYMENT_TRANSACTION)
+        INSERT INTO PAYMENT_TRANSACTION (fine_id, amount_paid, payment_date, payment_method)
+        VALUES (p_fine_id, v_total_amount, NOW(), 'Confirmed');
+        SET p_transaction_id = LAST_INSERT_ID();
+
+        -- 4. Cập nhật trạng thái phiếu phạt thành Completed
+        UPDATE FINE
+        SET payment_status = 'Completed'
+        WHERE fine_id = p_fine_id;
+
+    COMMIT;
+END//
+
+-- =============================================================================
+-- sp_access_digital_journal: Thẩm định quyền đọc tài liệu số & ghi ACCESS_LOG
+-- Thứ tự: AUTHOR_OF -> RESOURCE.is_public -> RESOURCE_LICENSE + fn_has_all_required_licenses
+-- Thời điểm truy cập: thống nhất dùng NOW() (không dùng accessDate từ Java)
+-- =============================================================================
+DROP PROCEDURE IF EXISTS sp_access_digital_journal//
+CREATE PROCEDURE sp_access_digital_journal(
+    IN  p_person_id   INT,
+    IN  p_resource_id INT,
+    IN  p_ip_address  VARCHAR(45),
+    OUT p_allowed     BOOLEAN,
+    OUT p_reason      VARCHAR(255),
+    OUT p_log_id      BIGINT
+)
+BEGIN
+    DECLARE v_res_type    VARCHAR(30);
+    DECLARE v_is_public   BOOLEAN DEFAULT FALSE;
+    DECLARE v_is_author   INT DEFAULT 0;
+    DECLARE v_req_count   INT DEFAULT 0;
+    DECLARE v_has_all     BOOLEAN DEFAULT FALSE;
+    DECLARE v_access_res  VARCHAR(50) DEFAULT 'DENIED';
+    DECLARE v_dl_success  TINYINT(1) DEFAULT 0;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    SET p_allowed = FALSE;
+    SET p_reason = '';
+    SET p_log_id = 0;
+
+    START TRANSACTION;
+
+        -- 1. Kiểm tra RESOURCE tồn tại và là DIGITAL_JOURNAL
+        SELECT resource_type, is_public
+        INTO v_res_type, v_is_public
+        FROM RESOURCE
+        WHERE resource_id = p_resource_id;
+
+        IF v_res_type IS NULL OR v_res_type <> 'DIGITAL_JOURNAL' THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = '[NOT_FOUND] Không tìm thấy tài liệu số (DIGITAL_JOURNAL) với ID đã cho.';
+        END IF;
+
+        -- 2. Ghi nhận ACCESS_LOG trạng thái PENDING trước khi đánh giá quyền
+        INSERT INTO ACCESS_LOG (person_id, journal_resource_id, access_timestamp, ip_address, download_success, access_result)
+        VALUES (NULLIF(p_person_id, 0), p_resource_id, NOW(), COALESCE(NULLIF(p_ip_address, ''), '127.0.0.1'), 0, 'PENDING');
+        SET p_log_id = LAST_INSERT_ID();
+
+        -- 3. Kiểm tra đặc quyền tác giả (AUTHOR_OF)
+        IF p_person_id IS NOT NULL AND p_person_id > 0 THEN
+            SELECT COUNT(*) INTO v_is_author
+            FROM AUTHOR_OF
+            WHERE person_id = p_person_id AND resource_id = p_resource_id;
+        END IF;
+
+        IF v_is_author > 0 THEN
+            SET p_allowed = TRUE;
+            SET p_reason = 'Đặc quyền Tác giả (AUTHOR_OF).';
+            SET v_access_res = 'ALLOWED_AUTHOR';
+            SET v_dl_success = 1;
+
+        -- 4. Kiểm tra RESOURCE.is_public
+        ELSEIF v_is_public = TRUE THEN
+            SET p_allowed = TRUE;
+            SET p_reason = 'Tài nguyên công khai (is_public = TRUE).';
+            SET v_access_res = 'ALLOWED_PUBLIC';
+            SET v_dl_success = 1;
+
+        -- 5. Tài liệu private: kiểm tra định danh, khai báo License và fn_has_all_required_licenses
+        ELSE
+            IF p_person_id IS NULL OR p_person_id <= 0 THEN
+                SET p_allowed = FALSE;
+                SET p_reason = '[BR04_LICENSE_EXPIRED] Tài liệu private yêu cầu định danh người dùng và License hợp lệ.';
+                SET v_access_res = 'DENIED_ANONYMOUS';
+                SET v_dl_success = 0;
+            ELSE
+                SELECT COUNT(*) INTO v_req_count
+                FROM RESOURCE_LICENSE
+                WHERE resource_id = p_resource_id;
+
+                IF v_req_count = 0 THEN
+                    SET p_allowed = FALSE;
+                    SET p_reason = '[BR04_LICENSE_EXPIRED] Tài liệu private chưa khai báo gói License nào.';
+                    SET v_access_res = 'DENIED_NO_LICENSE_DECLARED';
+                    SET v_dl_success = 0;
+                ELSE
+                    SET v_has_all = fn_has_all_required_licenses(p_person_id, p_resource_id);
+                    IF v_has_all = TRUE THEN
+                        SET p_allowed = TRUE;
+                        SET p_reason = 'Người dùng sở hữu đầy đủ tất cả License bắt buộc.';
+                        SET v_access_res = 'ALLOWED_LICENSE';
+                        SET v_dl_success = 1;
+                    ELSE
+                        SET p_allowed = FALSE;
+                        SET p_reason = '[BR04_LICENSE_EXPIRED] Người dùng chưa sở hữu đầy đủ tất cả License bắt buộc.';
+                        SET v_access_res = 'DENIED_MISSING_LICENSE';
+                        SET v_dl_success = 0;
+                    END IF;
+                END IF;
+            END IF;
+        END IF;
+
+        -- 6. Cập nhật kết quả cuối vào ACCESS_LOG
+        UPDATE ACCESS_LOG
+        SET download_success = v_dl_success,
+            access_result = v_access_res
+        WHERE log_id = p_log_id;
+
+    COMMIT;
+END//
+
 DELIMITER ;

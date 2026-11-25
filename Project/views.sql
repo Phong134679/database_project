@@ -306,6 +306,7 @@ SELECT
     l.ip_address,
     l.download_success,
     CASE
+        WHEN l.access_result IS NOT NULL THEN l.access_result
         WHEN l.download_success = 1 THEN 'ALLOWED'
         ELSE 'DENIED'
     END AS access_result
