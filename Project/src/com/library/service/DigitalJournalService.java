@@ -1,7 +1,7 @@
 package com.library.service;
 
 import com.library.exception.InvalidInputException;
-import com.library.exception.LicenseExpiredException;
+import com.library.exception.LibraryException;
 import com.library.exception.ResourceNotFoundException;
 import com.library.model.AccessLog;
 import com.library.model.DigitalJournal;
@@ -13,10 +13,16 @@ import com.library.repository.DigitalJournalRepository;
 import com.library.repository.GrantedLicenseRepository;
 import com.library.repository.LicensePackageRepository;
 import com.library.repository.PersonRepository;
+import com.library.util.DatabaseConnection;
+import com.library.util.SqlExceptionMapper;
 import com.library.validation.DataValidator;
 import com.library.validation.LicenseValidator;
 import com.library.validation.MemberValidator;
 
+import java.sql.CallableStatement;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -57,73 +63,60 @@ public class DigitalJournalService {
     }
 
     /**
-     * Executes digital journal access verification following the official order:
-     * 1. AUTHOR_OF (cho phép ngay, bỏ qua is_public và License)
-     * 2. RESOURCE.is_public == TRUE (cho phép ngay)
-     * 3. Private -> phải có khai báo License trong RESOURCE_LICENSE và sở hữu TẤT CẢ (AND)
+     * Executes digital journal access verification and ACCESS_LOG recording
+     * via MySQL Stored Procedure sp_access_digital_journal (uses MySQL NOW()).
      */
-    public boolean accessDigitalJournal(Integer personId, int journalResourceId, String ipAddress, LocalDate ignoredDate) {
+    public boolean accessDigitalJournal(Integer personId, int journalResourceId, String ipAddress) {
         DataValidator.validatePositiveId(journalResourceId, "Journal Resource ID");
 
-        // Kiểm tra tài nguyên số có tồn tại không
-        DigitalJournal journal = journalRepository.findById(journalResourceId);
-        LicenseValidator.validateJournalExists(journal, journalResourceId);
+        String sql = "{CALL sp_access_digital_journal(?, ?, ?, ?, ?, ?)}";
+        try (Connection conn = DatabaseConnection.getConnection();
+             CallableStatement cs = conn.prepareCall(sql)) {
 
-        // Ghi nhận nhật ký truy cập vào ACCESS_LOG (BR13 & FR08)
-        AccessLog log = new AccessLog(
-                0,
-                journalResourceId,
-                ipAddress != null ? ipAddress : "127.0.0.1"
-        );
-        accessLogRepository.insertLog(log);
-
-        // Bước 1: Kiểm tra người dùng có phải tác giả của tài liệu hay không (AUTHOR_OF)
-        if (personId != null && personId > 0) {
-            boolean isAuthor = journalRepository.isAuthorOfResource(personId, journalResourceId);
-            if (isAuthor) {
-                Person author = personRepository.findById(personId);
-                String authorName = author != null ? author.getName() : ("Person ID " + personId);
-                System.out.println("[DigitalJournalService] ACCESS GRANTED (Đặc quyền Tác giả AUTHOR_OF): User [" + authorName +
-                        "] -> \"" + journal.getTitle() + "\"");
-                return true;
+            if (personId != null && personId > 0) {
+                cs.setInt(1, personId);
+            } else {
+                cs.setNull(1, Types.INTEGER);
             }
-        }
+            cs.setInt(2, journalResourceId);
+            if (ipAddress != null) {
+                cs.setString(3, ipAddress);
+            } else {
+                cs.setNull(3, Types.VARCHAR);
+            }
+            cs.registerOutParameter(4, Types.BOOLEAN); // p_allowed
+            cs.registerOutParameter(5, Types.VARCHAR); // p_reason
+            cs.registerOutParameter(6, Types.BIGINT);  // p_log_id
+            cs.execute();
 
-        // Bước 2 & 3: Kiểm tra RESOURCE.is_public
-        if (journal.isPublic()) {
-            System.out.println("[DigitalJournalService] ACCESS GRANTED (Tài nguyên công khai is_public = TRUE): \"" +
-                    journal.getTitle() + "\" from IP: " + ipAddress);
+            boolean allowed = cs.getBoolean(4);
+            String reason = cs.getString(5);
+            long logId = cs.getLong(6);
+
+            System.out.println("[DigitalJournalService] Access Log #" + logId + ": "
+                    + (allowed ? "ALLOWED" : "DENIED") + " — " + reason);
+
+            if (!allowed) {
+                LibraryException mapped = SqlExceptionMapper.mapFromReason(reason);
+                if (mapped != null) {
+                    throw mapped;
+                }
+                return false;
+            }
             return true;
-        }
-
-        // Bước 4-7: Tài nguyên private -> yêu cầu người dùng hợp lệ và sở hữu ĐẦY ĐỦ tất cả License bắt buộc
-        if (personId == null || personId <= 0) {
-            throw new LicenseExpiredException("Tài liệu số này ở chế độ Private (Cần License). Vui lòng chọn người dùng để thẩm định quyền đọc.");
-        }
-
-        Person person = personRepository.findById(personId);
-        MemberValidator.validatePersonExists(person, personId);
-        String userName = person.getName();
-
-        boolean hasAllLicenses = grantedLicenseRepository.hasAllRequiredLicenses(personId, journalResourceId);
-        if (hasAllLicenses) {
-            System.out.println("[DigitalJournalService] ACCESS GRANTED (Đủ toàn bộ License bắt buộc): User [" + userName +
-                    "] -> \"" + journal.getTitle() + "\"");
-            return true;
-        } else {
-            System.out.println("[DigitalJournalService] ACCESS BLOCKED: User [" + userName +
-                    "] lacks required license(s) for \"" + journal.getTitle() + "\"");
-            LicenseValidator.validateActiveLicense(false, userName, journal.getTitle());
+        } catch (SQLException e) {
+            SqlExceptionMapper.throwMapped(e);
             return false;
         }
     }
 
-    public boolean accessDigitalJournal(int personId, int journalResourceId, String ipAddress, LocalDate accessDate) {
-        return accessDigitalJournal(Integer.valueOf(personId), journalResourceId, ipAddress, accessDate);
+    public boolean accessDigitalJournal(int personId, int journalResourceId, String ipAddress) {
+        return accessDigitalJournal(Integer.valueOf(personId), journalResourceId, ipAddress);
     }
 
-    public boolean accessDigitalJournal(int personId, int journalResourceId, String ipAddress) {
-        return accessDigitalJournal(Integer.valueOf(personId), journalResourceId, ipAddress, null);
+    @Deprecated
+    public boolean accessDigitalJournal(int personId, int journalResourceId, String ipAddress, LocalDate accessDate) {
+        return accessDigitalJournal(Integer.valueOf(personId), journalResourceId, ipAddress);
     }
 
     /**

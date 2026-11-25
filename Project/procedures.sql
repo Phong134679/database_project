@@ -468,7 +468,7 @@ BEGIN
 
         -- 2. Ghi nhận ACCESS_LOG trạng thái PENDING trước khi đánh giá quyền
         INSERT INTO ACCESS_LOG (person_id, journal_resource_id, access_timestamp, ip_address, download_success, access_result)
-        VALUES (NULLIF(p_person_id, 0), p_resource_id, NOW(), COALESCE(NULLIF(p_ip_address, ''), '127.0.0.1'), 0, 'PENDING');
+        VALUES (NULLIF(p_person_id, 0), p_resource_id, NOW(), p_ip_address, 0, 'PENDING');
         SET p_log_id = LAST_INSERT_ID();
 
         -- 3. Kiểm tra đặc quyền tác giả (AUTHOR_OF)

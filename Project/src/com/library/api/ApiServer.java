@@ -481,20 +481,15 @@ public class ApiServer {
                     } catch (Exception ignored) {}
                 }
 
-                String ipAddress = json.has("ipAddress") ? json.get("ipAddress").getAsString() : "127.0.0.1";
-                LocalDate accessDate = LocalDate.now();
-                if (json.has("accessDate") && !json.get("accessDate").isJsonNull()) {
-                    String dStr = json.get("accessDate").getAsString();
-                    if (!dStr.trim().isEmpty()) {
-                        accessDate = LocalDate.parse(dStr);
-                    }
-                }
+                String ipAddress = json.has("ipAddress") && !json.get("ipAddress").isJsonNull()
+                        ? json.get("ipAddress").getAsString()
+                        : null;
 
                 DigitalJournal journal = journalService.getJournalDetails(journalId);
 
                 try {
                     boolean isAuthor = personId != null && personId > 0 && journalRepo.isAuthorOfResource(personId, journalId);
-                    boolean granted = journalService.accessDigitalJournal(personId, journalId, ipAddress, accessDate);
+                    boolean granted = journalService.accessDigitalJournal(personId, journalId, ipAddress);
                     Map<String, Object> res = new LinkedHashMap<>();
                     res.put("accessGranted", granted);
                     res.put("isPublic", journal.isPublic());

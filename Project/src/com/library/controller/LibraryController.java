@@ -134,9 +134,9 @@ public class LibraryController {
      */
     public boolean handleAccessDigitalJournal(int personId, int journalResourceId, String ipAddress, LocalDate accessDate) {
         System.out.println("\n[LibraryController] Processing digital journal access request: Person " +
-                personId + ", Journal Resource " + journalResourceId + " on date: " + accessDate);
+                personId + ", Journal Resource " + journalResourceId);
         try {
-            boolean granted = journalService.accessDigitalJournal(personId, journalResourceId, ipAddress, accessDate);
+            boolean granted = journalService.accessDigitalJournal(personId, journalResourceId, ipAddress);
             if (granted) {
                 System.out.println("[LibraryController] RESULT: Access granted. User authorized to read/download.");
             }
