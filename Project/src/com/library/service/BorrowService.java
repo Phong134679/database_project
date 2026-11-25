@@ -5,11 +5,17 @@ import com.library.exception.InvalidDateRangeException;
 import com.library.exception.LibraryException;
 import com.library.model.Borrow;
 import com.library.model.Fine;
+import com.library.model.Person;
+import com.library.model.Resource;
 import com.library.repository.BorrowRepository;
 import com.library.repository.FineRepository;
+import com.library.repository.GrantedLicenseRepository;
+import com.library.repository.PersonRepository;
+import com.library.repository.ResourceRepository;
 import com.library.util.DatabaseConnection;
 import com.library.validation.BorrowValidator;
 import com.library.validation.DataValidator;
+import com.library.validation.LicenseValidator;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -32,29 +38,44 @@ public class BorrowService {
     private BorrowRepository borrowRepository;
     private FineRepository fineRepository;
     private MemberService memberService;
+    private ResourceRepository resourceRepository;
+    private GrantedLicenseRepository grantedLicenseRepository;
+    private PersonRepository personRepository;
 
     public BorrowService() {
         this.borrowRepository = new BorrowRepository();
         this.fineRepository = new FineRepository();
         this.memberService = new MemberService();
+        this.resourceRepository = new ResourceRepository();
+        this.grantedLicenseRepository = new GrantedLicenseRepository();
+        this.personRepository = new PersonRepository();
     }
 
     public BorrowService(BorrowRepository borrowRepository) {
         this.borrowRepository = borrowRepository;
         this.fineRepository = new FineRepository();
         this.memberService = new MemberService();
+        this.resourceRepository = new ResourceRepository();
+        this.grantedLicenseRepository = new GrantedLicenseRepository();
+        this.personRepository = new PersonRepository();
     }
 
     public BorrowService(BorrowRepository borrowRepository, FineRepository fineRepository) {
         this.borrowRepository = borrowRepository;
         this.fineRepository = fineRepository;
         this.memberService = new MemberService();
+        this.resourceRepository = new ResourceRepository();
+        this.grantedLicenseRepository = new GrantedLicenseRepository();
+        this.personRepository = new PersonRepository();
     }
 
     public BorrowService(BorrowRepository borrowRepository, FineRepository fineRepository, MemberService memberService) {
         this.borrowRepository = borrowRepository;
         this.fineRepository = fineRepository;
         this.memberService = memberService;
+        this.resourceRepository = new ResourceRepository();
+        this.grantedLicenseRepository = new GrantedLicenseRepository();
+        this.personRepository = new PersonRepository();
     }
 
     /**
@@ -69,9 +90,26 @@ public class BorrowService {
         DataValidator.validateNonEmptyString(copyId, "Copy ID");
 
         // 2. Kiểm tra tính hợp lệ của người mượn (Test 01, BR01, BR05)
+        //    Lưu ý: GUEST và EXTERNAL_AUTHOR luôn bị chặn mượn sách vật lý (không có đặc quyền AUTHOR_OF).
         memberService.isEligibleToBorrow(memberId);
 
-        // 3. Phân định thời hạn mượn theo vai trò thành viên (BR05)
+        // 3. Kiểm tra quyền truy cập Resource của bản sao sách (RESOURCE.is_public OR HAS_ALL_REQUIRED_LICENSES)
+        Integer resourceId = resourceRepository.findResourceIdByCopyId(copyId);
+        if (resourceId == null) {
+            BorrowValidator.validateCopyAvailable(false, copyId);
+        }
+        Resource resource = resourceRepository.findById(resourceId);
+        LicenseValidator.validateResourceExists(resource, resourceId);
+        if (!resource.isPublic()) {
+            boolean hasAllLicenses = grantedLicenseRepository.hasAllRequiredLicenses(memberId, resourceId);
+            if (!hasAllLicenses) {
+                Person p = personRepository.findById(memberId);
+                String userName = p != null ? p.getName() : ("Person ID " + memberId);
+                LicenseValidator.validateActiveLicense(false, userName, resource.getTitle());
+            }
+        }
+
+        // 4. Phân định thời hạn mượn theo vai trò thành viên (BR05)
         int loanDays = memberService.getLoanDurationDays(memberId);
         LocalDate today = LocalDate.now();
         LocalDate dueDate = today.plusDays(loanDays);

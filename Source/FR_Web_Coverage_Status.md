@@ -252,24 +252,17 @@ ORDER BY f.fine_id DESC;
 - **Bảng liên kết tác giả (Authorship Check)**:
   - `AUTHOR_OF`: Kiểm tra xem người yêu cầu có phải là tác giả của chính tài nguyên số này hay không.
     - *Câu lệnh kiểm tra*: `SELECT COUNT(*) FROM AUTHOR_OF WHERE person_id = ? AND resource_id = ?`.
-- **Các bảng quản lý bản quyền số (License Entitlement Verification - BR04, BR12)**:
-  - `GRANTED_LICENSE`: Kiểm tra thời hạn cấp quyền cho người dùng (`grant_id`, `person_id`, `license_id`, `valid_from`, `valid_to`).
-  - `RESOURCE_LICENSE`: Xác định tài nguyên số thuộc các gói bản quyền nào (`resource_id`, `license_id`).
+- **Các bảng quản lý bản quyền (License Entitlement Verification - BR04, BR12)**:
+  - `GRANTED_LICENSE`: Lưu bản ghi cấp quyền theo cặp duy nhất (`grant_id`, `person_id`, `license_id`, `UNIQUE(person_id, license_id)`) — đã bỏ thời hạn `valid_from`/`valid_to`, cấp và thu hồi **MANUAL** bởi Thủ thư.
+  - `RESOURCE_LICENSE`: Xác định tài nguyên (`RESOURCE`) yêu cầu những gói bản quyền nào (`resource_id`, `license_id`).
   - `LICENSE_PACKAGE`: Lấy thông tin tên gói bản quyền, nhà cung cấp.
-    - *Kỹ thuật JOIN*: `GRANTED_LICENSE` **JOIN** `RESOURCE_LICENSE` ON `gl.license_id = rl.license_id`.
 - **Bảng nhật ký kiểm toán (Audit Logging Table - BR13)**:
   - `ACCESS_LOG`: Lưu vết lịch sử truy cập độc lập không khóa ngoại cứng (`log_id`, `journal_resource_id`, `ip_address`).
 
 #### 3. Câu lệnh truy vấn thẩm định bản quyền & Truy vấn nhật ký
 ```sql
--- 1. Thẩm định gói bản quyền còn hiệu lực vào ngày accessDate (BR04, BR12)
-SELECT COUNT(*) AS active_count
-FROM GRANTED_LICENSE gl
-JOIN RESOURCE_LICENSE rl ON gl.license_id = rl.license_id
-WHERE gl.person_id = :personId
-  AND rl.resource_id = :journalResourceId
-  AND gl.valid_from <= :accessDate
-  AND gl.valid_to >= :accessDate;
+-- 1. Thẩm định người dùng sở hữu ĐỦ TẤT CẢ License bắt buộc (AND bên trong, tách case rỗng)
+SELECT fn_has_all_required_licenses(:personId, :resourceId) AS has_all_licenses;
 
 -- 2. Truy vấn hiển thị bảng nhật ký ACCESS_LOG (Soft-Join hiển thị tiêu đề tài liệu)
 SELECT 
@@ -284,8 +277,10 @@ ORDER BY al.log_id DESC;
 
 #### 4. Các thao tác ghi dữ liệu (Data Modifications)
 - **Ghi nhận nhật ký truy cập (POST /api/digital-journals/{id}/access)**:
-  - Ghi vết `journal_resource_id` và `ip_address` (không theo dõi person_id, không ghi timestamp, bãi bỏ download):
-    `INSERT INTO ACCESS_LOG (journal_resource_id, ip_address) VALUES (?, ?);`
+  - Ghi vết `journal_resource_id` và `ip_address`: `INSERT INTO ACCESS_LOG (journal_resource_id, ip_address) VALUES (?, ?);`
+- **Thủ thư cấp & thu hồi License MANUAL (POST /api/granted-licenses, DELETE /api/granted-licenses/{id})**:
+  - Cấp quyền: `INSERT INTO GRANTED_LICENSE (person_id, license_id) VALUES (?, ?);` (ngăn trùng lặp).
+  - Thu hồi quyền: `DELETE FROM GRANTED_LICENSE WHERE grant_id = ?;`
 
 ---
 

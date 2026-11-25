@@ -22,8 +22,8 @@ public class DigitalJournalRepository {
      * Finds a DigitalJournal by its resourceId joining with RESOURCE superclass table.
      */
     public DigitalJournal findById(int resourceId) {
-        String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "       dj.url, dj.file_size, dj.format, dj.is_public " +
+        String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, r.is_public, " +
+                     "       dj.url, dj.file_size, dj.format " +
                      "FROM DIGITAL_JOURNAL dj " +
                      "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
                      "WHERE dj.resource_id = ?";
@@ -89,8 +89,8 @@ public class DigitalJournalRepository {
      */
     public List<DigitalJournal> findAll() {
         List<DigitalJournal> list = new ArrayList<>();
-        String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, " +
-                     "       dj.url, dj.file_size, dj.format, dj.is_public " +
+        String sql = "SELECT r.resource_id, r.title, r.publish_date, r.topic, r.resource_type, r.is_public, " +
+                     "       dj.url, dj.file_size, dj.format " +
                      "FROM DIGITAL_JOURNAL dj " +
                      "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
                      "ORDER BY r.resource_id ASC";

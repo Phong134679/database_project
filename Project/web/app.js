@@ -61,7 +61,7 @@ function switchTab(tabId, clickedBtn) {
   if (tabId === 'tab-resources') loadResources();
   else if (tabId === 'tab-borrow') { loadMembers(); loadCopies(); loadBorrows(); }
   else if (tabId === 'tab-fines') loadFines();
-  else if (tabId === 'tab-digital') { loadMembers(); loadResources(); loadAccessLogs(); }
+  else if (tabId === 'tab-digital') { loadMembers(); loadResources(); loadAccessLogs(); loadLicenses(); loadGrantedLicenses(); }
   else if (tabId === 'tab-members') loadMembers();
 }
 
@@ -115,9 +115,11 @@ function renderResources(list) {
   tbody.innerHTML = list.map(r => {
     const isBook = r.resourceType === 'PHYSICAL_BOOK';
     const typeBadge = isBook
-      ? '<span class="badge badge-info">Sách in</span>'
+      ? (r.isPublic
+          ? '<span class="badge badge-info">Sách in (Public)</span>'
+          : '<span class="badge badge-warning">Sách in (Cần License)</span>')
       : (r.isPublic
-          ? '<span class="badge badge-success">Tạp chí số (Open Access)</span>'
+          ? '<span class="badge badge-success">Tạp chí số (Public)</span>'
           : '<span class="badge badge-warning">Tạp chí số (Cần License)</span>');
 
     const extraInfo = isBook
@@ -645,6 +647,114 @@ function populateMemberDropdowns() {
       accessSelect.appendChild(opt);
     });
   }
+
+  const grantSelect = document.getElementById('grantPersonSelect');
+  if (grantSelect) {
+    grantSelect.innerHTML = '<option value="">-- Chọn người dùng cần cấp --</option>';
+    state.members.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.personId;
+      opt.textContent = `[ID: ${m.personId}] ${m.name} (${m.personType})`;
+      grantSelect.appendChild(opt);
+    });
+  }
+}
+
+// =============================================================================
+// LIBRARIAN MANUAL LICENSE GRANT & REVOKE
+// =============================================================================
+async function loadLicenses() {
+  try {
+    const res = await fetch(`${API_BASE}/api/licenses`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const list = await res.json();
+    const select = document.getElementById('grantLicenseSelect');
+    if (select) {
+      select.innerHTML = '<option value="">-- Chọn gói bản quyền --</option>';
+      list.forEach(lp => {
+        const opt = document.createElement('option');
+        opt.value = lp.licenseId;
+        opt.textContent = `[ID: ${lp.licenseId}] ${lp.licenseName} (${lp.provider || '-'})`;
+        select.appendChild(opt);
+      });
+    }
+  } catch (err) {
+    console.error("Lỗi tải danh sách gói License:", err);
+  }
+}
+
+async function loadGrantedLicenses() {
+  const tbody = document.getElementById('grantedLicensesBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Đang tải danh sách cấp quyền...</td></tr>';
+  try {
+    const res = await fetch(`${API_BASE}/api/granted-licenses`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const list = await res.json();
+    if (!list || list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Chưa có bản ghi cấp quyền License nào.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(g => `
+      <tr>
+        <td><strong>#${g.grantId}</strong></td>
+        <td><strong>${g.personName}</strong> (ID: ${g.personId})</td>
+        <td><span class="badge badge-secondary">${g.personType}</span></td>
+        <td><strong>${g.licenseName}</strong> (ID: ${g.licenseId})</td>
+        <td>${g.provider || '-'}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="revokeGrantedLicense(${g.grantId})">🗑️ Thu hồi</button></td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state" style="color: var(--danger);">Lỗi tải danh sách License: ${err.message}</td></tr>`;
+  }
+}
+
+async function handleGrantLicenseSubmit(e) {
+  e.preventDefault();
+  const personId = parseInt(document.getElementById('grantPersonSelect').value);
+  const licenseId = parseInt(document.getElementById('grantLicenseSelect').value);
+  if (!personId || !licenseId) {
+    showAlert('danger', 'Vui lòng chọn cả người dùng và gói License.');
+    return;
+  }
+  const btn = document.getElementById('btnGrantLicense');
+  btn.disabled = true;
+  btn.innerText = 'Đang cấp...';
+  try {
+    const res = await fetch(`${API_BASE}/api/granted-licenses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ personId, licenseId })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showAlert('success', `<strong>Cấp License thành công!</strong> Grant ID #${data.grantId} (Person #${personId}, License #${licenseId}).`);
+      loadGrantedLicenses();
+    } else {
+      showAlert('danger', `<strong>Không thể cấp License [${data.errorCode || 'ERROR'}]:</strong> ${data.message}`);
+    }
+  } catch (err) {
+    showAlert('danger', `Lỗi mạng khi cấp License: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerText = '➕ Cấp License (MANUAL)';
+  }
+}
+
+async function revokeGrantedLicense(grantId) {
+  try {
+    const res = await fetch(`${API_BASE}/api/granted-licenses/${grantId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showAlert('success', `<strong>Đã thu hồi License!</strong> ${data.message}`);
+      loadGrantedLicenses();
+    } else {
+      showAlert('danger', `<strong>Lỗi thu hồi [${data.errorCode || 'ERROR'}]:</strong> ${data.message}`);
+    }
+  } catch (err) {
+    showAlert('danger', `Lỗi mạng khi thu hồi License: ${err.message}`);
+  }
 }
 
 // Utility: HTML Escape
@@ -669,6 +779,8 @@ function initApp() {
   loadBorrows();
   loadFines();
   loadAccessLogs();
+  loadLicenses();
+  loadGrantedLicenses();
 }
 
 if (document.readyState === 'loading') {

@@ -1,26 +1,21 @@
 package com.library.model;
 
-import java.time.LocalDate;
-
 /**
- * Entity representing an access license granted to an individual.
+ * Entity representing an access license granted to an individual (GRANTED_LICENSE).
+ * Đã loại bỏ valid_from và valid_to: chỉ xác nhận sự tồn tại của bản ghi cấp quyền.
  */
 public class GrantedLicense {
     private int grantId;
     private int personId;
     private int licenseId;
-    private LocalDate validFrom;
-    private LocalDate validTo;
 
     public GrantedLicense() {
     }
 
-    public GrantedLicense(int grantId, int personId, int licenseId, LocalDate validFrom, LocalDate validTo) {
+    public GrantedLicense(int grantId, int personId, int licenseId) {
         this.grantId = grantId;
         this.personId = personId;
         this.licenseId = licenseId;
-        this.validFrom = validFrom;
-        this.validTo = validTo;
     }
 
     public int getGrantId() {
@@ -47,30 +42,12 @@ public class GrantedLicense {
         this.licenseId = licenseId;
     }
 
-    public LocalDate getValidFrom() {
-        return validFrom;
-    }
-
-    public void setValidFrom(LocalDate validFrom) {
-        this.validFrom = validFrom;
-    }
-
-    public LocalDate getValidTo() {
-        return validTo;
-    }
-
-    public void setValidTo(LocalDate validTo) {
-        this.validTo = validTo;
-    }
-
     @Override
     public String toString() {
         return "GrantedLicense{" +
                 "grantId=" + grantId +
                 ", personId=" + personId +
                 ", licenseId=" + licenseId +
-                ", validFrom=" + validFrom +
-                ", validTo=" + validTo +
                 '}';
     }
 }

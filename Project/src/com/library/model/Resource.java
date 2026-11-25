@@ -11,16 +11,22 @@ public class Resource {
     private LocalDate publishDate;
     private String topic;
     private String resourceType;
+    private boolean isPublic;
 
     public Resource() {
     }
 
     public Resource(int resourceId, String title, LocalDate publishDate, String topic, String resourceType) {
+        this(resourceId, title, publishDate, topic, resourceType, false);
+    }
+
+    public Resource(int resourceId, String title, LocalDate publishDate, String topic, String resourceType, boolean isPublic) {
         this.resourceId = resourceId;
         this.title = title;
         this.publishDate = publishDate;
         this.topic = topic;
         this.resourceType = resourceType;
+        this.isPublic = isPublic;
     }
 
     public int getResourceId() {
@@ -63,6 +69,14 @@ public class Resource {
         this.resourceType = resourceType;
     }
 
+    public boolean isPublic() {
+        return isPublic;
+    }
+
+    public void setPublic(boolean aPublic) {
+        isPublic = aPublic;
+    }
+
     @Override
     public String toString() {
         return "Resource{" +
@@ -71,6 +85,7 @@ public class Resource {
                 ", publishDate=" + publishDate +
                 ", topic='" + topic + '\'' +
                 ", resourceType='" + resourceType + '\'' +
+                ", isPublic=" + isPublic +
                 '}';
     }
 }

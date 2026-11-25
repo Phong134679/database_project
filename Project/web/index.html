@@ -204,7 +204,7 @@
           <span>Kiểm tra Quyền truy cập & Đọc Tạp chí số (BR04, BR12, FR08)</span>
         </div>
         <p class="hint" style="margin-bottom: 16px;">
-          Theo quy chế <strong>BR04 & BR12</strong>, tài liệu số có bản quyền thương mại yêu cầu tài khoản độc giả sở hữu gói bản quyền (`GRANTED_LICENSE`) còn hạn. Các tài liệu <strong>Open Access (is_public = TRUE)</strong> cho phép đọc trực tuyến tự do. Hệ thống <strong>đã bãi bỏ chức năng download</strong> (chuyển sang đọc trực tuyến), <strong>không theo dõi person_id</strong> và <strong>không lưu access_timestamp</strong> trong nhật ký; bảng <strong>ACCESS_LOG</strong> chỉ ghi nhận mã tài liệu và địa chỉ IP client.
+          Theo quy chế <strong>BR04 & BR12</strong> (Phương án B: <strong>is_public = TRUE OR sở hữu đủ toàn bộ License yêu cầu</strong>), tài nguyên Private yêu cầu người dùng sở hữu đầy đủ các gói <code>GRANTED_LICENSE</code> tương ứng (không xét thời hạn). Riêng <strong>Tác giả (AUTHOR_OF)</strong> được đọc tài liệu số của chính mình. Bảng <strong>ACCESS_LOG</strong> ghi nhận mã tài liệu và địa chỉ IP client.
         </p>
 
         <form id="accessJournalForm" onsubmit="handleJournalAccessSubmit(event)">
@@ -260,6 +260,53 @@
             </thead>
             <tbody id="accessLogsBody">
               <tr><td colspan="3" class="empty-state">Đang tải nhật ký truy cập...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Quản lý Cấp & Thu hồi License (Thủ thư - MANUAL) -->
+      <div class="card">
+        <div class="card-title">
+          <span>Quản lý Cấp & Thu hồi License (Thủ thư - MANUAL)</span>
+          <button class="btn btn-secondary btn-sm" onclick="loadGrantedLicenses()">🔄 Làm mới danh sách</button>
+        </div>
+        <p class="hint" style="margin-bottom: 16px;">
+          Thủ thư cấp trực tiếp gói bản quyền vào <code>GRANTED_LICENSE</code> cho <code>person_id</code> hợp lệ (kể cả Guest nếu được xác minh ngoài hệ thống). Ngăn chặn cấp trùng và hỗ trợ thu hồi bất kỳ lúc nào.
+        </p>
+
+        <form id="grantLicenseForm" onsubmit="handleGrantLicenseSubmit(event)" style="margin-bottom: 20px;">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="grantPersonSelect">Người dùng (PERSON) (*):</label>
+              <select id="grantPersonSelect" required>
+                <option value="">-- Chọn người dùng cần cấp --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="grantLicenseSelect">Gói bản quyền (LICENSE_PACKAGE) (*):</label>
+              <select id="grantLicenseSelect" required>
+                <option value="">-- Chọn gói bản quyền --</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-success" id="btnGrantLicense">➕ Cấp License (MANUAL)</button>
+        </form>
+
+        <div class="table-responsive">
+          <table id="grantedLicensesTable">
+            <thead>
+              <tr>
+                <th>Grant ID</th>
+                <th>Người dùng</th>
+                <th>Phân loại</th>
+                <th>Gói License</th>
+                <th>Nhà cung cấp</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="grantedLicensesBody">
+              <tr><td colspan="6" class="empty-state">Đang tải danh sách cấp quyền...</td></tr>
             </tbody>
           </table>
         </div>

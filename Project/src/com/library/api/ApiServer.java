@@ -92,6 +92,8 @@ public class ApiServer {
         server.createContext("/api/fines", new FineHandler());
         server.createContext("/api/digital-journals", new DigitalJournalHandler());
         server.createContext("/api/access-logs", new AccessLogHandler());
+        server.createContext("/api/licenses", new LicensePackageHandler());
+        server.createContext("/api/granted-licenses", new GrantedLicenseHandler());
 
         // Static Web UI Handler (fallback root context)
         server.createContext("/", new StaticWebHandler());
@@ -499,11 +501,11 @@ public class ApiServer {
                     res.put("isAuthor", isAuthor);
                     String msg;
                     if (isAuthor) {
-                        msg = "Truy cập được phê duyệt (Đặc quyền Tác giả: Tác giả được tự do truy cập tác phẩm của mình mà không cần gói bản quyền).";
+                        msg = "Truy cập được phê duyệt (Đặc quyền Tác giả AUTHOR_OF: Tác giả được tự do đọc tác phẩm của mình).";
                     } else if (journal.isPublic()) {
-                        msg = "Truy cập được phê duyệt (Tài liệu công khai / Open Access - Đọc trực tuyến tự do).";
+                        msg = "Truy cập được phê duyệt (Tài nguyên công khai is_public = TRUE - Đọc trực tuyến tự do).";
                     } else {
-                        msg = "Truy cập được phê duyệt (Gói bản quyền còn hiệu lực).";
+                        msg = "Truy cập được phê duyệt (Người dùng sở hữu đầy đủ toàn bộ License yêu cầu).";
                     }
                     res.put("message", msg);
                     res.put("journalId", journalId);
@@ -551,6 +553,105 @@ public class ApiServer {
             } catch (Exception e) {
                 HttpUtils.handleException(exchange, e);
             }
+        }
+    }
+
+    // =========================================================================
+    // 8b. License Packages Handler: GET /api/licenses
+    // =========================================================================
+    private class LicensePackageHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                HttpUtils.enableCors(exchange);
+                exchange.sendResponseHeaders(204, -1);
+                return;
+            }
+            if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                HttpUtils.sendError(exchange, 405, "METHOD_NOT_ALLOWED", "Method not allowed.");
+                return;
+            }
+            try {
+                HttpUtils.sendJson(exchange, 200, journalService.getAllLicensePackages());
+            } catch (Exception e) {
+                HttpUtils.handleException(exchange, e);
+            }
+        }
+    }
+
+    // =========================================================================
+    // 8c. Granted Licenses Handler (MANUAL Grant & Revoke):
+    //     GET    /api/granted-licenses
+    //     POST   /api/granted-licenses        { personId, licenseId }
+    //     DELETE /api/granted-licenses/{id}
+    // =========================================================================
+    private class GrantedLicenseHandler implements HttpHandler {
+        private final Pattern idPattern = Pattern.compile("^/api/granted-licenses/(\\d+)/?$");
+
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                HttpUtils.enableCors(exchange);
+                exchange.sendResponseHeaders(204, -1);
+                return;
+            }
+
+            String path = exchange.getRequestURI().getPath();
+            String method = exchange.getRequestMethod();
+
+            Matcher idMatcher = idPattern.matcher(path);
+            if (idMatcher.matches()) {
+                if ("DELETE".equalsIgnoreCase(method)) {
+                    int grantId = Integer.parseInt(idMatcher.group(1));
+                    try {
+                        journalService.revokeLicenseByGrantId(grantId);
+                        Map<String, Object> res = new LinkedHashMap<>();
+                        res.put("success", true);
+                        res.put("message", "Thu hồi License thành công (Grant ID: " + grantId + ").");
+                        res.put("grantId", grantId);
+                        HttpUtils.sendJson(exchange, 200, res);
+                    } catch (Exception e) {
+                        HttpUtils.handleException(exchange, e);
+                    }
+                    return;
+                }
+                HttpUtils.sendError(exchange, 405, "METHOD_NOT_ALLOWED", "Method not allowed.");
+                return;
+            }
+
+            if ("/api/granted-licenses".equals(path) || "/api/granted-licenses/".equals(path)) {
+                if ("GET".equalsIgnoreCase(method)) {
+                    try {
+                        HttpUtils.sendJson(exchange, 200, journalService.getAllGrantedLicensesDetailed());
+                    } catch (Exception e) {
+                        HttpUtils.handleException(exchange, e);
+                    }
+                    return;
+                } else if ("POST".equalsIgnoreCase(method)) {
+                    try {
+                        JsonObject json = HttpUtils.readJsonBody(exchange);
+                        if (!json.has("personId") || !json.has("licenseId")) {
+                            HttpUtils.sendError(exchange, 400, "INVALID_INPUT", "Yêu cầu cả 'personId' và 'licenseId'.");
+                            return;
+                        }
+                        int personId = json.get("personId").getAsInt();
+                        int licenseId = json.get("licenseId").getAsInt();
+                        var grant = journalService.grantLicenseManual(personId, licenseId);
+                        Map<String, Object> res = new LinkedHashMap<>();
+                        res.put("success", true);
+                        res.put("message", "Cấp License MANUAL thành công.");
+                        res.put("grantId", grant.getGrantId());
+                        res.put("personId", grant.getPersonId());
+                        res.put("licenseId", grant.getLicenseId());
+                        HttpUtils.sendJson(exchange, 201, res);
+                    } catch (Exception e) {
+                        HttpUtils.handleException(exchange, e);
+                    }
+                    return;
+                }
+            }
+
+            HttpUtils.sendError(exchange, 404, "NOT_FOUND", "Endpoint not found: " + path);
         }
     }
 

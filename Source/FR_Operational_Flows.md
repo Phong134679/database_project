@@ -87,9 +87,9 @@ flowchart TD
 #### 1. Mục tiêu & Thực thể liên quan
 - **Mục tiêu**: Quản lý danh mục tài nguyên tri thức gồm hai phân nhánh riêng biệt: Sách in vật lý và Tạp chí/Bài báo số.
 - **Thực thể CSDL**:
-  - `RESOURCE` (Superclass: `resource_id`, `title`, `publish_date`, `topic`, `resource_type`: `'PHYSICAL_BOOK'` hoặc `'DIGITAL_JOURNAL'`).
+  - `RESOURCE` (Superclass: `resource_id`, `title`, `publish_date`, `topic`, `resource_type`, `is_public`).
   - `PHYSICAL_BOOK` (Subclass: `resource_id`, `shelf_location` - Thuộc tính `isbn` đã được loại bỏ để tinh giản).
-  - `DIGITAL_JOURNAL` (Subclass: `resource_id`, `url`, `file_size`, `format`, `is_public` - Thuộc tính `doi` đã được loại bỏ để tinh giản).
+  - `DIGITAL_JOURNAL` (Subclass: `resource_id`, `url`, `file_size`, `format` - Đã loại bỏ `doi` và chuyển `is_public` lên `RESOURCE`).
   - `AUTHOR_OF` & `PERSON`: Liên kết tác giả sáng tác tài nguyên.
 
 #### 2. Quy chế Nghiệp vụ chi phối
@@ -252,55 +252,39 @@ sequenceDiagram
 
 ---
 
-### FR07: Digital License Management (Quản lý Bản Quyền & Thẩm Định Quyền Đọc Số)
+### FR07: Digital License Management (Quản lý Bản Quyền & Quyền Truy Cập Resource)
 
 #### 1. Mục tiêu & Thực thể liên quan
-- **Mục tiêu**: Kiểm soát quyền truy cập trực tuyến đối với các tài liệu số, bảo đảm quyền sở hữu trí tuệ của nhà xuất bản, đồng thời bảo vệ đặc quyền tự do truy cập tác phẩm của chính các tác giả sáng tác.
+- **Mục tiêu**: Kiểm soát quyền truy cập tài liệu số và điều kiện License cho tài nguyên nói chung (`DIGITAL_JOURNAL` và `PHYSICAL_BOOK`), theo quy tắc **OR bên ngoài (`is_public`), AND bên trong (sở hữu đầy đủ mọi License yêu cầu)**.
 - **Thực thể CSDL**:
-  - `DIGITAL_JOURNAL` (`resource_id`, `url`, `file_size`, `format`, `is_public`).
+  - `RESOURCE` (`resource_id`, `title`, `resource_type`, `is_public`).
+  - `DIGITAL_JOURNAL` (`resource_id`, `url`, `file_size`, `format`).
   - `AUTHOR_OF` (`person_id`, `resource_id`: Quan hệ định danh tác giả tác phẩm).
-  - `EXTERNAL_AUTHOR` & `UNIVERSITY_MEMBER`: Phân định tư cách tác giả.
   - `LICENSE_PACKAGE` (`license_id`, `license_name`, `provider`, `description`).
-  - `RESOURCE_LICENSE` (`resource_id`, `license_id`).
-  - `GRANTED_LICENSE` (`grant_id`, `person_id`, `license_id`, `valid_from`, `valid_to`).
+  - `RESOURCE_LICENSE` (`resource_id`, `license_id` — FK trỏ lên `RESOURCE`).
+  - `GRANTED_LICENSE` (`grant_id`, `person_id`, `license_id` — kèm `UNIQUE(person_id, license_id)`, bỏ `valid_from`/`valid_to`, cấp và thu hồi **MANUAL** bởi Thủ thư).
 
-#### 2. Quy chế Nghiệp vụ chi phối & Điều chỉnh
-- **Quy tắc Đặc quyền Tác giả (Author Access Privilege)**:
-  - Tác giả được **truy cập tùy ý vào chính tác phẩm của họ** mà không cần sở hữu bất kỳ gói bản quyền thương mại (`GRANTED_LICENSE`) nào.
-  - **Ràng buộc đối với `EXTERNAL_AUTHOR`**: Riêng đối tượng là Tác giả ngoài (`EXTERNAL_AUTHOR`) chỉ được cấp quyền truy cập tùy ý vào **bản Digital** của tác phẩm. Họ không được phép mượn bản sao vật lý (`BOOK_COPY`) về nhà theo quy chế lưu thông vật lý (BR01).
-  - Đối với Tác giả là Thành viên trường (`UNIVERSITY_MEMBER`): Được truy cập tùy ý bản Digital và được mượn bản sao vật lý về nhà theo quota độc giả của trường.
-- **Open Access (Tài liệu công khai)**: Nếu bài báo số có cờ `is_public = TRUE`, mọi đối tượng bạn đọc (kể cả khách ngoài `GUEST`) đều được phép đọc toàn văn mà không cần bất kỳ gói bản quyền nào.
-- **BR04 & BR12 (Active License Enforcement)**: Đối với bài báo số có bản quyền thương mại (`is_public = FALSE`) và người đọc không phải là tác giả của bài báo đó, người dùng bắt buộc phải sở hữu gói bản quyền (`GRANTED_LICENSE`) thỏa mãn:
-  $$\text{valid\_from} \le \text{access\_date} \le \text{valid\_to}$$
-  đồng thời gói bản quyền đó phải chứa tài nguyên cần đọc (`RESOURCE_LICENSE`). Nếu không thỏa mãn, hệ thống từ chối truy cập và ném ngoại lệ `LicenseExpiredException`.
+#### 2. Quy chế Nghiệp vụ chi phối & Điều chỉnh Chính thức
+- **Công thức đọc tài nguyên số (`DIGITAL_JOURNAL`)**:
+  $$\text{ALLOW} = \text{IS\_AUTHOR} \;\mathbf{OR}\; (\text{RESOURCE.is\_public} = \text{TRUE}) \;\mathbf{OR}\; \text{HAS\_ALL\_REQUIRED\_LICENSES}$$
+  Thứ tự kiểm tra: (1) Nếu là tác giả (`AUTHOR_OF`) $\rightarrow$ cho phép ngay; (2) Nếu `RESOURCE.is_public = TRUE` $\rightarrow$ cho phép ngay; (3) Nếu private $\rightarrow$ phải có khai báo License trong `RESOURCE_LICENSE` và người dùng sở hữu **đầy đủ tất cả** các License đó trong `GRANTED_LICENSE`. Resource private không khai báo License sẽ bị **từ chối**.
+- **Công thức mượn sách vật lý (`PHYSICAL_BOOK`)**:
+  $$\text{ALLOW} = (\text{RESOURCE.is\_public} = \text{TRUE}) \;\mathbf{OR}\; \text{HAS\_ALL\_REQUIRED\_LICENSES}$$
+  *(Không áp dụng đặc quyền `AUTHOR_OF` cho mượn sách vật lý; đồng thời vẫn giữ bắt buộc BR01, BR05, BR10 — `GUEST` và `EXTERNAL_AUTHOR` không thể mượn sách vật lý).*
+- **Cấp & Thu hồi License (MANUAL only)**: Thủ thư trực tiếp cấp hoặc thu hồi bản ghi trong `GRANTED_LICENSE` cho `person_id` hợp lệ (ngăn cấp trùng lặp bằng `UNIQUE(person_id, license_id)`).
 
-#### 3. Biểu đồ Luồng Thẩm Định Bản Quyền Số (Cập nhật Đặc quyền Tác giả)
+#### 3. Biểu đồ Luồng Thẩm Định Quyền Truy Cập Resource
 ```mermaid
 flowchart TD
-    Start(["Độc giả yêu cầu truy cập tài liệu số (person_id, resource_id, access_date)"]) --> CheckAuthor{"Độc giả có phải là\nTÁC GIẢ của tài liệu số\n(AUTHOR_OF) không?"}
-    
-    CheckAuthor -- Có (Là Tác giả) --> CheckAuthorType{"Tác giả thuộc phân loại nào?"}
-    CheckAuthorType -- EXTERNAL_AUTHOR --> GrantDigitalOnly["CẤP QUYỀN TRUY CẬP BẢN DIGITAL TỨC THỜI\n(Đặc quyền Tác giả ngoài - Miễn License)\n(Lưu ý: Không được mượn bản vật lý về nhà)"]
-    CheckAuthorType -- UNIVERSITY_MEMBER --> GrantFullAccess["CẤP QUYỀN TRUY CẬP TOÀN DIỆN\n(Đặc quyền Tác giả nội bộ - Miễn License)\n(Được truy cập Digital & mượn bản vật lý)"]
-    
-    CheckAuthor -- Không (Không phải tác giả) --> CheckPublic{"Tài liệu có is_public = TRUE\n(Open Access) không?"}
-    
-    CheckPublic -- Có (True) --> GrantAccess["CẤP QUYỀN TRUY CẬP\n(Open Access - Không yêu cầu License)"]
-    
-    CheckPublic -- Không (False) --> QueryLicense["Truy vấn GRANTED_LICENSE & RESOURCE_LICENSE\ntheo person_id và resource_id"]
-    
-    QueryLicense --> ValidateActive{"Có gói bản quyền hợp lệ\nvào ngày access_date không?\n(BR04, BR12)"}
-    
-    ValidateActive -- Hợp lệ --> GrantAccess
-    ValidateActive -- Hết hạn / Không có --> DenyAccess["TỪ CHỐI TRUY CẬP\n(Mã lỗi: BR04_LICENSE_EXPIRED)"]
-    
-    GrantDigitalOnly --> LogSuccess["Ghi nhật ký ACCESS_LOG\n(download_success = TRUE) - BR13"]
-    GrantFullAccess --> LogSuccess
-    GrantAccess --> LogSuccess
-    DenyAccess --> LogFail["Ghi nhật ký ACCESS_LOG\n(download_success = FALSE) - BR13"]
-    
-    LogSuccess --> ReturnSuccess(["Trả về URL truy cập toàn văn tài liệu số"])
-    LogFail --> ReturnError(["Trả về thông báo lỗi vi phạm bản quyền"])
+    Start(["Yêu cầu đọc Tài liệu số (person_id, resource_id)"]) --> CheckAuthor{"Độc giả có phải là\nTÁC GIẢ của tài liệu số\n(AUTHOR_OF) không?"}
+    CheckAuthor -- Có --> GrantAuthor["CẤP QUYỀN TỨC THỜI\n(Đặc quyền Tác giả - Miễn License)"]
+    CheckAuthor -- Không --> CheckPublic{"RESOURCE.is_public == TRUE?"}
+    CheckPublic -- TRUE --> GrantPublic["CẤP QUYỀN\n(Tài nguyên công khai)"]
+    CheckPublic -- FALSE --> CheckDeclared{"Resource có khai báo License\ntrong RESOURCE_LICENSE?"}
+    CheckDeclared -- Không (Rỗng) --> DenyAccess["TỪ CHỐI TRUY CẬP\n(Private chưa khai báo License)"]
+    CheckDeclared -- Có --> CheckAll{"Người dùng sở hữu ĐỦ TẤT CẢ\nLicense bắt buộc trong GRANTED_LICENSE?"}
+    CheckAll -- Đủ tất cả (AND) --> GrantLic["CẤP QUYỀN\n(Đủ toàn bộ License yêu cầu)"]
+    CheckAll -- Thiếu bất kỳ --> DenyAccess
 ```
 
 ---

@@ -3,11 +3,14 @@ package com.library.validation;
 import com.library.exception.LicenseExpiredException;
 import com.library.exception.ResourceNotFoundException;
 import com.library.model.DigitalJournal;
+import com.library.model.LicensePackage;
+import com.library.model.Resource;
 
 import java.time.LocalDate;
 
 /**
- * Validator for digital resource entitlement, license coverage, and expiration (BR04, BR12).
+ * Validator for resource access authorization and license entitlement (BR04, BR12).
+ * Đã bỏ kiểm tra thời hạn (valid_from / valid_to): chỉ kiểm tra sự tồn tại đầy đủ License yêu cầu.
  */
 public final class LicenseValidator {
 
@@ -25,21 +28,39 @@ public final class LicenseValidator {
     }
 
     /**
-     * Validates that the user holds an active, unexpired license package for the digital resource.
+     * Validates that a general resource exists.
      */
-    public static void validateActiveLicense(boolean hasActiveLicense, String userName, String journalTitle, LocalDate checkDate) {
-        if (!hasActiveLicense) {
+    public static void validateResourceExists(Resource resource, int resourceId) {
+        if (resource == null) {
+            throw new ResourceNotFoundException("Tài nguyên (Resource)", resourceId);
+        }
+    }
+
+    /**
+     * Validates that a license package exists.
+     */
+    public static void validateLicensePackageExists(LicensePackage lp, int licenseId) {
+        if (lp == null) {
+            throw new ResourceNotFoundException("Gói bản quyền (LicensePackage)", licenseId);
+        }
+    }
+
+    /**
+     * Validates that the user holds all required licenses for the private resource.
+     */
+    public static void validateActiveLicense(boolean hasAllRequiredLicenses, String userName, String resourceTitle) {
+        if (!hasAllRequiredLicenses) {
             throw new LicenseExpiredException(
-                    "Độc giả [" + userName + "] không có gói bản quyền còn hiệu lực cho tài liệu: \"" +
-                    journalTitle + "\" tại thời điểm: " + checkDate + " (BR04, BR12)."
+                    "Độc giả [" + userName + "] chưa sở hữu đầy đủ tất cả License bắt buộc cho tài nguyên: \"" +
+                    resourceTitle + "\" (BR04, BR12)."
             );
         }
     }
 
     /**
-     * Validates validity date range when granting a license package to a user.
+     * Compatibility overload kept for existing callers/tests.
      */
-    public static void validateLicenseGrant(LocalDate validFrom, LocalDate validTo) {
-        DataValidator.validateDateRange(validFrom, validTo, "Thời hạn cấp gói bản quyền");
+    public static void validateActiveLicense(boolean hasAllRequiredLicenses, String userName, String resourceTitle, LocalDate ignoredDate) {
+        validateActiveLicense(hasAllRequiredLicenses, userName, resourceTitle);
     }
 }

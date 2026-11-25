@@ -54,20 +54,20 @@ INSERT INTO EXTERNAL_AUTHOR (person_id, affiliation, biography) VALUES
 (5, 'Clean Code Alliance & ACM Fellow', 'Chuyên gia quốc tế về Kiến trúc phần mềm và Kỹ thuật phần mềm sạch.');
 
 -- =============================================================================
--- 3. INSERT RESOURCE (Superclass)
+-- 3. INSERT RESOURCE (Superclass - Kèm cờ is_public)
 -- =============================================================================
-INSERT INTO RESOURCE (resource_id, title, publish_date, topic, resource_type) VALUES
-(1, 'Database System Concepts (7th Edition)', '2019-05-15', 'Computer Science', 'PHYSICAL_BOOK'),
-(2, 'Clean Code: A Handbook of Agile Software Craftsmanship', '2008-08-01', 'Software Engineering', 'PHYSICAL_BOOK'),
-(3, 'Deep Learning Architectures for Big Data Analytics', '2025-03-10', 'Artificial Intelligence', 'DIGITAL_JOURNAL'),
-(4, 'ACM Computing Surveys: Distributed Transaction Processing', '2024-11-20', 'Distributed Systems', 'DIGITAL_JOURNAL'),
-(5, 'Clean Architecture: Software Structure and Design', '2024-05-10', 'Software Engineering', 'DIGITAL_JOURNAL'),
-(6, 'Cloud Database Scaling and Distributed Query Optimization', '2025-08-20', 'Database Systems', 'DIGITAL_JOURNAL'),
-(7, 'Giáo trình Cơ sở Dữ liệu Nâng cao và Hệ phân tán', '2025-01-15', 'Computer Science', 'PHYSICAL_BOOK');
+INSERT INTO RESOURCE (resource_id, title, publish_date, topic, resource_type, is_public) VALUES
+(1, 'Database System Concepts (7th Edition)', '2019-05-15', 'Computer Science', 'PHYSICAL_BOOK', TRUE),
+(2, 'Clean Code: A Handbook of Agile Software Craftsmanship', '2008-08-01', 'Software Engineering', 'PHYSICAL_BOOK', FALSE),
+(3, 'Deep Learning Architectures for Big Data Analytics', '2025-03-10', 'Artificial Intelligence', 'DIGITAL_JOURNAL', FALSE),
+(4, 'ACM Computing Surveys: Distributed Transaction Processing', '2024-11-20', 'Distributed Systems', 'DIGITAL_JOURNAL', TRUE),
+(5, 'Clean Architecture: Software Structure and Design', '2024-05-10', 'Software Engineering', 'DIGITAL_JOURNAL', FALSE),
+(6, 'Cloud Database Scaling and Distributed Query Optimization', '2025-08-20', 'Database Systems', 'DIGITAL_JOURNAL', FALSE),
+(7, 'Giáo trình Cơ sở Dữ liệu Nâng cao và Hệ phân tán', '2025-01-15', 'Computer Science', 'PHYSICAL_BOOK', TRUE);
 
 -- =============================================================================
 -- 4. INSERT SUBCLASSES CỦA RESOURCE (PHYSICAL_BOOK & DIGITAL_JOURNAL)
--- Bỏ ISBN ở PHYSICAL_BOOK
+-- Bỏ ISBN ở PHYSICAL_BOOK; is_public đã chuyển lên bảng cha RESOURCE
 -- =============================================================================
 -- Sách in truyền thống
 INSERT INTO PHYSICAL_BOOK (resource_id, shelf_location) VALUES
@@ -75,12 +75,12 @@ INSERT INTO PHYSICAL_BOOK (resource_id, shelf_location) VALUES
 (2, 'Kệ B2-12-01'),
 (7, 'Kệ C1-05-02');
 
--- Tạp chí, bài báo điện tử (Đã bỏ doi)
-INSERT INTO DIGITAL_JOURNAL (resource_id, url, file_size, format, is_public) VALUES
-(3, 'https://dl.library.edu/journals/deep-learning-2025.pdf', 4096, 'PDF', FALSE),
-(4, 'https://dl.library.edu/journals/acm-distributed-tx.pdf', 2048, 'PDF', TRUE),
-(5, 'https://dl.library.edu/journals/clean-architecture-2024.pdf', 5120, 'PDF', FALSE),
-(6, 'https://dl.library.edu/journals/cloud-db-scaling-2025.pdf', 3584, 'PDF', FALSE);
+-- Tạp chí, bài báo điện tử (Đã bỏ doi và is_public)
+INSERT INTO DIGITAL_JOURNAL (resource_id, url, file_size, format) VALUES
+(3, 'https://dl.library.edu/journals/deep-learning-2025.pdf', 4096, 'PDF'),
+(4, 'https://dl.library.edu/journals/acm-distributed-tx.pdf', 2048, 'PDF'),
+(5, 'https://dl.library.edu/journals/clean-architecture-2024.pdf', 5120, 'PDF'),
+(6, 'https://dl.library.edu/journals/cloud-db-scaling-2025.pdf', 3584, 'PDF');
 
 -- =============================================================================
 -- 5. INSERT BOOK_COPY (Bản sao vật lý của sách)
@@ -100,20 +100,23 @@ INSERT INTO LICENSE_PACKAGE (license_id, license_name, provider, description) VA
 (1, 'IEEE Xplore Institutional Access Package', 'IEEE', 'Truy cập toàn văn bài báo và kỷ yếu hội nghị IEEE.'),
 (2, 'ACM Digital Library University Bundle', 'ACM', 'Gói bài báo nghiên cứu khoa học máy tính ACM toàn diện.');
 
--- M:N: Tạp chí số thuộc các gói bản quyền
+-- M:N: Tài nguyên (Sách in & Tạp chí số) yêu cầu các gói bản quyền nào
 INSERT INTO RESOURCE_LICENSE (resource_id, license_id) VALUES
-(3, 1), -- Deep Learning Journal thuộc gói IEEE
-(4, 2), -- ACM Surveys thuộc gói ACM
-(5, 2), -- Clean Architecture Journal thuộc gói ACM
-(6, 1); -- Cloud Database Scaling thuộc gói IEEE
+(2, 2), -- Sách in Clean Code (is_public=FALSE) yêu cầu gói ACM (2)
+(3, 1), -- Deep Learning Journal (is_public=FALSE) thuộc gói IEEE (1)
+(5, 1), -- Clean Architecture Journal (is_public=FALSE) yêu cầu CẢ IEEE (1) và ACM (2)
+(5, 2); -- Clean Architecture Journal yêu cầu thêm gói ACM (2)
+-- Lưu ý: Resource #6 (is_public=FALSE) cố tình KHÔNG khai báo bản ghi RESOURCE_LICENSE để test trường hợp bị từ chối.
 
 -- =============================================================================
--- 7. INSERT GRANTED_LICENSE (Cấp quyền truy cập cho người dùng)
+-- 7. INSERT GRANTED_LICENSE (Cấp quyền truy cập cho người dùng - Bỏ thời hạn)
 -- =============================================================================
-INSERT INTO GRANTED_LICENSE (grant_id, person_id, license_id, valid_from, valid_to) VALUES
-(1, 1, 1, '2026-01-01', '2026-12-31'), -- Sinh viên Nguyễn Văn An có quyền truy cập IEEE (Còn hạn)
-(2, 2, 2, '2026-01-01', '2027-12-31'), -- TS Bình có quyền truy cập ACM (Còn hạn)
-(3, 4, 1, '2025-01-01', '2025-06-30'); -- Khách vãng lai Lê Văn Cường từng có gói IEEE (Đã hết hạn - Dùng cho Test 02)
+INSERT INTO GRANTED_LICENSE (grant_id, person_id, license_id) VALUES
+(1, 1, 1), -- Sinh viên Nguyễn Văn An (ID 1) chỉ có gói IEEE (1)
+(2, 2, 2), -- TS. Trần Thị Bình (ID 2) chỉ có gói ACM (2)
+(3, 6, 1), -- ThS. Hoàng Minh Đức (ID 6) có CẢ IEEE (1)
+(4, 6, 2); -- và ACM (2) -> Đủ điều kiện đọc Resource #5
+-- Guest #4 (Lê Văn Cường) mặc định KHÔNG có License nào (dùng cho Test 02 bị từ chối).
 
 -- =============================================================================
 -- 8. INSERT AUTHOR_OF (Quan hệ tác giả - tài nguyên)

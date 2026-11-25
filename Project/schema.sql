@@ -81,7 +81,8 @@ CREATE TABLE RESOURCE (
     title VARCHAR(250) NOT NULL,
     publish_date DATE,
     topic VARCHAR(100),
-    resource_type ENUM('PHYSICAL_BOOK', 'DIGITAL_JOURNAL') NOT NULL
+    resource_type ENUM('PHYSICAL_BOOK', 'DIGITAL_JOURNAL') NOT NULL,
+    is_public BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Cờ tài nguyên công khai (TRUE: miễn License; FALSE: phải đủ toàn bộ License yêu cầu)'
 ) ENGINE = InnoDB;
 
 -- Bảng con: PHYSICAL_BOOK (Sách in truyền thống - Đã bãi bỏ ISBN)
@@ -95,13 +96,12 @@ CREATE TABLE PHYSICAL_BOOK (
 ) ENGINE = InnoDB;
 
 -- Bảng con: DIGITAL_JOURNAL (Bài báo, tạp chí điện tử)
--- Đã loại bỏ thuộc tính 'doi' do người dùng chỉ cần truy cập qua url/hệ thống mà không cần định danh DOI cho từng bản online
+-- Đã loại bỏ thuộc tính 'doi'; thuộc tính 'is_public' đã chuyển lên bảng cha RESOURCE
 CREATE TABLE DIGITAL_JOURNAL (
     resource_id INT PRIMARY KEY,
     url VARCHAR(250),
     file_size INT COMMENT 'Kích thước file tính theo KB/MB',
     format VARCHAR(10) COMMENT 'Định dạng PDF, EPUB, XML',
-    is_public BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Cờ tài liệu mở/công khai cho mọi đối tượng gồm khách ngoài',
     CONSTRAINT fk_digital_journal_resource
         FOREIGN KEY (resource_id) REFERENCES RESOURCE(resource_id)
         ON DELETE CASCADE
@@ -132,13 +132,13 @@ CREATE TABLE LICENSE_PACKAGE (
     description TEXT
 ) ENGINE = InnoDB;
 
--- Bảng cấp quyền: GRANTED_LICENSE (Phân quyền truy cập tài liệu số cho người dùng)
+-- Bảng cấp quyền: GRANTED_LICENSE (Phân quyền truy cập tài nguyên cho người dùng - cấp MANUAL)
+-- Bỏ valid_from, valid_to; kiểm tra theo sự tồn tại bản ghi và ngăn cấp trùng bằng UNIQUE(person_id, license_id)
 CREATE TABLE GRANTED_LICENSE (
     grant_id INT AUTO_INCREMENT PRIMARY KEY,
     person_id INT NOT NULL,
     license_id INT NOT NULL,
-    valid_from DATE NOT NULL,
-    valid_to DATE NOT NULL,
+    CONSTRAINT uq_granted_person_license UNIQUE (person_id, license_id),
     CONSTRAINT fk_granted_license_person
         FOREIGN KEY (person_id) REFERENCES PERSON(person_id)
         ON DELETE CASCADE
@@ -149,13 +149,14 @@ CREATE TABLE GRANTED_LICENSE (
         ON UPDATE CASCADE
 ) ENGINE = InnoDB;
 
--- Bảng kết hợp N:M: RESOURCE_LICENSE (Tài nguyên số thuộc gói bản quyền nào)
+-- Bảng kết hợp N:M: RESOURCE_LICENSE (Tài nguyên thuộc các gói bản quyền bắt buộc nào)
+-- FK resource_id trỏ lên bảng cha RESOURCE để áp dụng cho cả DIGITAL_JOURNAL và PHYSICAL_BOOK
 CREATE TABLE RESOURCE_LICENSE (
     resource_id INT NOT NULL,
     license_id INT NOT NULL,
     PRIMARY KEY (resource_id, license_id),
-    CONSTRAINT fk_reslic_journal
-        FOREIGN KEY (resource_id) REFERENCES DIGITAL_JOURNAL(resource_id)
+    CONSTRAINT fk_reslic_resource
+        FOREIGN KEY (resource_id) REFERENCES RESOURCE(resource_id)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
     CONSTRAINT fk_reslic_package
@@ -270,3 +271,25 @@ LEFT JOIN UNIVERSITY_MEMBER um ON p.person_id = um.person_id
 LEFT JOIN EXTERNAL_AUTHOR ea ON p.person_id = ea.person_id
 GROUP BY p.person_id, p.ssn, p.name, p.email, p.person_type, 
          um.person_id, um.member_type, um.department, ea.person_id, ea.affiliation;
+
+-- =============================================================================
+-- 8. STORED FUNCTION KIỂM TRA LICENSE (PHƯƠNG ÁN B: OR BÊN NGOÀI, AND BÊN TRONG)
+-- Kiểm tra riêng trường hợp không có bản ghi RESOURCE_LICENSE để tránh lỗi double NOT EXISTS.
+-- =============================================================================
+
+DROP FUNCTION IF EXISTS fn_has_all_required_licenses;
+
+CREATE FUNCTION fn_has_all_required_licenses(p_person_id INT, p_resource_id INT)
+RETURNS BOOLEAN
+READS SQL DATA
+RETURN (
+    (SELECT COUNT(*) FROM RESOURCE_LICENSE WHERE resource_id = p_resource_id) > 0
+    AND
+    (SELECT COUNT(DISTINCT rl.license_id)
+     FROM RESOURCE_LICENSE rl
+     INNER JOIN GRANTED_LICENSE gl ON rl.license_id = gl.license_id
+     WHERE rl.resource_id = p_resource_id
+       AND gl.person_id = p_person_id)
+    =
+    (SELECT COUNT(*) FROM RESOURCE_LICENSE WHERE resource_id = p_resource_id)
+);
