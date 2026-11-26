@@ -4,11 +4,12 @@ import java.time.LocalDate;
 
 /**
  * Entity representing a borrow/return transaction.
- * copyId is formatted as '<resource_id>_<index>' (String).
+ * memberId references UNIVERSITY_MEMBER.member_id (VARCHAR).
+ * copyId references BOOK_COPY.copy_id (VARCHAR, e.g. '1_1').
  */
 public class Borrow {
     private int borrowId;
-    private int memberPersonId;
+    private String memberId;
     private String copyId;
     private LocalDate borrowDate;
     private LocalDate dueDate;
@@ -17,17 +18,13 @@ public class Borrow {
     public Borrow() {
     }
 
-    public Borrow(int borrowId, int memberPersonId, String copyId, LocalDate borrowDate, LocalDate dueDate, LocalDate returnDate) {
+    public Borrow(int borrowId, String memberId, String copyId, LocalDate borrowDate, LocalDate dueDate, LocalDate returnDate) {
         this.borrowId = borrowId;
-        this.memberPersonId = memberPersonId;
+        this.memberId = memberId;
         this.copyId = copyId;
         this.borrowDate = borrowDate;
         this.dueDate = dueDate;
         this.returnDate = returnDate;
-    }
-
-    public Borrow(int borrowId, int memberPersonId, int copyId, LocalDate borrowDate, LocalDate dueDate, LocalDate returnDate) {
-        this(borrowId, memberPersonId, String.valueOf(copyId), borrowDate, dueDate, returnDate);
     }
 
     public int getBorrowId() {
@@ -38,12 +35,12 @@ public class Borrow {
         this.borrowId = borrowId;
     }
 
-    public int getMemberPersonId() {
-        return memberPersonId;
+    public String getMemberId() {
+        return memberId;
     }
 
-    public void setMemberPersonId(int memberPersonId) {
-        this.memberPersonId = memberPersonId;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getCopyId() {
@@ -82,7 +79,7 @@ public class Borrow {
     public String toString() {
         return "Borrow{" +
                 "borrowId=" + borrowId +
-                ", memberPersonId=" + memberPersonId +
+                ", memberId='" + memberId + '\'' +
                 ", copyId='" + copyId + '\'' +
                 ", borrowDate=" + borrowDate +
                 ", dueDate=" + dueDate +

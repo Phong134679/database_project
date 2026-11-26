@@ -1,11 +1,7 @@
 package com.library.model;
 
-import java.time.LocalDate;
-
 /**
  * Subclass of Resource representing a digital journal or article.
- * Thuộc tính 'doi' đã được bãi bỏ do người dùng truy cập trực tiếp qua url/hệ thống
- * mà không cần mã định danh quốc tế DOI cho từng bản online.
  */
 public class DigitalJournal extends Resource {
     private String url;
@@ -16,14 +12,9 @@ public class DigitalJournal extends Resource {
         super();
     }
 
-    public DigitalJournal(int resourceId, String title, LocalDate publishDate, String topic, String resourceType,
+    public DigitalJournal(int resourceId, String title, String topic, boolean isPublic,
                           String url, int fileSize, String format) {
-        this(resourceId, title, publishDate, topic, resourceType, url, fileSize, format, false);
-    }
-
-    public DigitalJournal(int resourceId, String title, LocalDate publishDate, String topic, String resourceType,
-                          String url, int fileSize, String format, boolean isPublic) {
-        super(resourceId, title, publishDate, topic, resourceType, isPublic);
+        super(resourceId, title, topic, isPublic);
         this.url = url;
         this.fileSize = fileSize;
         this.format = format;

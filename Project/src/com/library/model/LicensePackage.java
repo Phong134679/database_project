@@ -1,21 +1,19 @@
 package com.library.model;
 
 /**
- * Entity representing a license package providing access rights to specific digital resources.
+ * Entity representing a license package providing access rights to specific resources.
  */
 public class LicensePackage {
     private int licenseId;
     private String licenseName;
-    private String provider;
     private String description;
 
     public LicensePackage() {
     }
 
-    public LicensePackage(int licenseId, String licenseName, String provider, String description) {
+    public LicensePackage(int licenseId, String licenseName, String description) {
         this.licenseId = licenseId;
         this.licenseName = licenseName;
-        this.provider = provider;
         this.description = description;
     }
 
@@ -35,14 +33,6 @@ public class LicensePackage {
         this.licenseName = licenseName;
     }
 
-    public String getProvider() {
-        return provider;
-    }
-
-    public void setProvider(String provider) {
-        this.provider = provider;
-    }
-
     public String getDescription() {
         return description;
     }
@@ -56,7 +46,6 @@ public class LicensePackage {
         return "LicensePackage{" +
                 "licenseId=" + licenseId +
                 ", licenseName='" + licenseName + '\'' +
-                ", provider='" + provider + '\'' +
                 ", description='" + description + '\'' +
                 '}';
     }

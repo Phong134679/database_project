@@ -1,31 +1,22 @@
 package com.library.model;
 
-import java.time.LocalDate;
-
 /**
  * Superclass representing the master catalog of all material types (physical or digital).
+ * Subtype tables (PHYSICAL_BOOK, DIGITAL_JOURNAL) determine the resource kind.
  */
 public class Resource {
     private int resourceId;
     private String title;
-    private LocalDate publishDate;
     private String topic;
-    private String resourceType;
     private boolean isPublic;
 
     public Resource() {
     }
 
-    public Resource(int resourceId, String title, LocalDate publishDate, String topic, String resourceType) {
-        this(resourceId, title, publishDate, topic, resourceType, false);
-    }
-
-    public Resource(int resourceId, String title, LocalDate publishDate, String topic, String resourceType, boolean isPublic) {
+    public Resource(int resourceId, String title, String topic, boolean isPublic) {
         this.resourceId = resourceId;
         this.title = title;
-        this.publishDate = publishDate;
         this.topic = topic;
-        this.resourceType = resourceType;
         this.isPublic = isPublic;
     }
 
@@ -45,28 +36,12 @@ public class Resource {
         this.title = title;
     }
 
-    public LocalDate getPublishDate() {
-        return publishDate;
-    }
-
-    public void setPublishDate(LocalDate publishDate) {
-        this.publishDate = publishDate;
-    }
-
     public String getTopic() {
         return topic;
     }
 
     public void setTopic(String topic) {
         this.topic = topic;
-    }
-
-    public String getResourceType() {
-        return resourceType;
-    }
-
-    public void setResourceType(String resourceType) {
-        this.resourceType = resourceType;
     }
 
     public boolean isPublic() {
@@ -82,9 +57,7 @@ public class Resource {
         return "Resource{" +
                 "resourceId=" + resourceId +
                 ", title='" + title + '\'' +
-                ", publishDate=" + publishDate +
                 ", topic='" + topic + '\'' +
-                ", resourceType='" + resourceType + '\'' +
                 ", isPublic=" + isPublic +
                 '}';
     }

@@ -16,13 +16,9 @@ import java.util.Map;
 
 /**
  * Repository class handling MySQL data persistence for GRANTED_LICENSE entity.
- * Đã bỏ valid_from / valid_to; kiểm tra theo sự tồn tại bản ghi và quy tắc AND cho nhiều License.
  */
 public class GrantedLicenseRepository {
 
-    /**
-     * Checks if a person already holds a specific license package (prevents duplicate grant).
-     */
     public boolean existsGrant(int personId, int licenseId) {
         String sql = "SELECT COUNT(*) FROM GRANTED_LICENSE WHERE person_id = ? AND license_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -40,9 +36,6 @@ public class GrantedLicenseRepository {
         return false;
     }
 
-    /**
-     * Inserts a new GrantedLicense into MySQL (MANUAL grant).
-     */
     public void insertGrant(GrantedLicense grant) {
         String sql = "INSERT INTO GRANTED_LICENSE (person_id, license_id) VALUES (?, ?)";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -64,9 +57,6 @@ public class GrantedLicenseRepository {
         }
     }
 
-    /**
-     * Revokes a license from a person by (person_id, license_id).
-     */
     public int revokeGrant(int personId, int licenseId) {
         String sql = "DELETE FROM GRANTED_LICENSE WHERE person_id = ? AND license_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -79,9 +69,6 @@ public class GrantedLicenseRepository {
         }
     }
 
-    /**
-     * Revokes a license grant by primary key grant_id.
-     */
     public int revokeByGrantId(int grantId) {
         String sql = "DELETE FROM GRANTED_LICENSE WHERE grant_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -93,9 +80,6 @@ public class GrantedLicenseRepository {
         }
     }
 
-    /**
-     * Finds a GrantedLicense by grantId.
-     */
     public GrantedLicense findById(int grantId) {
         String sql = "SELECT grant_id, person_id, license_id FROM GRANTED_LICENSE WHERE grant_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -113,9 +97,6 @@ public class GrantedLicenseRepository {
         return null;
     }
 
-    /**
-     * Finds all license grants for a specific person.
-     */
     public List<GrantedLicense> findByPersonId(int personId) {
         List<GrantedLicense> list = new ArrayList<>();
         String sql = "SELECT grant_id, person_id, license_id " +
@@ -135,53 +116,23 @@ public class GrantedLicenseRepository {
         return list;
     }
 
-    /**
-     * Checks if a private Resource declares at least one required license in RESOURCE_LICENSE
-     * AND the person owns ALL required licenses (Method B: AND inside).
-     * Explicitly checks requiredCount > 0 to avoid the double NOT EXISTS empty-set trap.
-     */
     public boolean hasAllRequiredLicenses(int personId, int resourceId) {
-        String countReqSql = "SELECT COUNT(*) AS req_count FROM RESOURCE_LICENSE WHERE resource_id = ?";
-        String countOwnedSql = "SELECT COUNT(DISTINCT rl.license_id) AS owned_count " +
-                               "FROM RESOURCE_LICENSE rl " +
-                               "INNER JOIN GRANTED_LICENSE gl ON rl.license_id = gl.license_id " +
-                               "WHERE rl.resource_id = ? AND gl.person_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            int reqCount = 0;
-            try (PreparedStatement psReq = conn.prepareStatement(countReqSql)) {
-                psReq.setInt(1, resourceId);
-                try (ResultSet rsReq = psReq.executeQuery()) {
-                    if (rsReq.next()) {
-                        reqCount = rsReq.getInt("req_count");
-                    }
+        String sql = "SELECT fn_has_all_required_licenses(?, ?) AS has_all";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, personId);
+            ps.setInt(2, resourceId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getBoolean("has_all");
                 }
             }
-
-            // Resource private không khai báo License -> từ chối (không mặc định cho phép)
-            if (reqCount == 0) {
-                return false;
-            }
-
-            int ownedCount = 0;
-            try (PreparedStatement psOwned = conn.prepareStatement(countOwnedSql)) {
-                psOwned.setInt(1, resourceId);
-                psOwned.setInt(2, personId);
-                try (ResultSet rsOwned = psOwned.executeQuery()) {
-                    if (rsOwned.next()) {
-                        ownedCount = rsOwned.getInt("owned_count");
-                    }
-                }
-            }
-
-            return ownedCount == reqCount;
         } catch (SQLException e) {
             throw new DatabaseException("Lỗi khi kiểm tra bộ License cho tài nguyên " + resourceId + " và người dùng " + personId + ": " + e.getMessage(), e);
         }
+        return false;
     }
 
-    /**
-     * Retrieves all GrantedLicense records.
-     */
     public List<GrantedLicense> findAll() {
         List<GrantedLicense> list = new ArrayList<>();
         String sql = "SELECT grant_id, person_id, license_id FROM GRANTED_LICENSE ORDER BY grant_id ASC";
@@ -203,8 +154,8 @@ public class GrantedLicenseRepository {
      */
     public List<Map<String, Object>> findAllDetailed() {
         List<Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT grant_id, person_id, person_name, person_type, " +
-                     "       license_id, license_name, provider " +
+        String sql = "SELECT grant_id, person_id, person_name, member_id, member_type, " +
+                     "       license_id, license_name, description " +
                      "FROM VIEW_GRANTED_LICENSES_DETAILED " +
                      "ORDER BY grant_id DESC";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -215,10 +166,11 @@ public class GrantedLicenseRepository {
                 map.put("grantId", rs.getInt("grant_id"));
                 map.put("personId", rs.getInt("person_id"));
                 map.put("personName", rs.getString("person_name"));
-                map.put("personType", rs.getString("person_type"));
+                map.put("memberId", rs.getString("member_id"));
+                map.put("memberType", rs.getString("member_type"));
                 map.put("licenseId", rs.getInt("license_id"));
                 map.put("licenseName", rs.getString("license_name"));
-                map.put("provider", rs.getString("provider"));
+                map.put("description", rs.getString("description"));
                 list.add(map);
             }
         } catch (SQLException e) {

@@ -11,10 +11,11 @@ import com.library.validation.DataValidator;
 import com.library.validation.MemberValidator;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Service class managing user identities, membership verification,
- * borrowing eligibility checks (Test 01, BR01, BR05, BR09).
+ * borrowing eligibility checks (BR01, BR05).
  */
 public class MemberService {
 
@@ -46,41 +47,41 @@ public class MemberService {
     }
 
     /**
-     * Checks if a person is eligible to borrow physical books home (Validation Case Test 01, BR01, BR05).
-     * Rejects by throwing specific BusinessException if invalid, returns true otherwise.
+     * Checks if a university member is eligible to borrow physical books (BR01, BR05).
      */
-    public boolean isEligibleToBorrow(int personId) {
-        DataValidator.validatePositiveId(personId, "Person ID");
+    public boolean isEligibleToBorrow(String memberId) {
+        DataValidator.validateNonEmptyString(memberId, "Member ID");
 
-        Person person = personRepository.findById(personId);
-        MemberValidator.validatePersonExists(person, personId);
+        UniversityMember member = memberRepository.findByMemberId(memberId);
+        if (member == null) {
+            throw new ResourceNotFoundException("Thành viên đại học (UniversityMember) với mã " + memberId, 0);
+        }
 
-        boolean hasOverdue = borrowRepository.hasOverdueBorrows(personId);
-        boolean hasFines = fineRepository.hasUnpaidFinesByMember(personId);
-        int activeBorrows = borrowRepository.countActiveBorrowsByMember(personId);
+        boolean hasOverdue = borrowRepository.hasOverdueBorrows(memberId);
+        boolean hasFines = fineRepository.hasUnpaidFinesByMember(memberId);
+        int activeBorrows = borrowRepository.countActiveBorrowsByMember(memberId);
 
-        MemberValidator.validateBorrowEligibility(person, hasOverdue, hasFines, activeBorrows);
+        MemberValidator.validateBorrowEligibility(member, hasOverdue, hasFines, activeBorrows);
         return true;
     }
 
     /**
-     * Determines loan duration in days according to user classification (BR05).
-     * Faculty: 30 days, Students: 14 days.
+     * Determines loan duration in days according to member_type (BR05).
+     * FACULTY: 30 days, STUDENT: 14 days.
      */
-    public int getLoanDurationDays(int personId) {
-        DataValidator.validatePositiveId(personId, "Person ID");
-        Person person = personRepository.findById(personId);
-        MemberValidator.validatePersonExists(person, personId);
+    public int getLoanDurationDays(String memberId) {
+        DataValidator.validateNonEmptyString(memberId, "Member ID");
+        UniversityMember member = memberRepository.findByMemberId(memberId);
+        if (member == null) {
+            throw new ResourceNotFoundException("Thành viên đại học (UniversityMember) với mã " + memberId, 0);
+        }
 
-        if ("FACULTY".equalsIgnoreCase(person.getPersonType())) {
+        if ("FACULTY".equalsIgnoreCase(member.getMemberType())) {
             return FACULTY_LOAN_DAYS;
         }
         return STUDENT_LOAN_DAYS;
     }
 
-    /**
-     * Retrieves member profile.
-     */
     public UniversityMember getMemberProfile(int personId) {
         DataValidator.validatePositiveId(personId, "Person ID");
         UniversityMember member = memberRepository.findByPersonId(personId);
@@ -90,24 +91,24 @@ public class MemberService {
         return member;
     }
 
-    /**
-     * Retrieves all university members.
-     */
+    public UniversityMember getMemberByMemberId(String memberId) {
+        DataValidator.validateNonEmptyString(memberId, "Member ID");
+        UniversityMember member = memberRepository.findByMemberId(memberId);
+        if (member == null) {
+            throw new ResourceNotFoundException("Thành viên đại học (UniversityMember) với mã " + memberId, 0);
+        }
+        return member;
+    }
+
     public List<UniversityMember> getAllMembers() {
         return memberRepository.findAll();
     }
 
-    /**
-     * Retrieves all persons in the database.
-     */
     public List<Person> getAllPersons() {
         return personRepository.findAll();
     }
 
-    /**
-     * Retrieves all persons with university details and borrow eligibility summary from VIEW_MEMBERS_DETAILED.
-     */
-    public List<java.util.Map<String, Object>> getAllPersonsDetailed() {
+    public List<Map<String, Object>> getAllPersonsDetailed() {
         return personRepository.findAllDetailed();
     }
 

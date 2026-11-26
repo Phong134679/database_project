@@ -6,9 +6,10 @@ import com.library.exception.OutstandingFineException;
 import com.library.exception.OverdueBooksPendingException;
 import com.library.exception.ResourceNotFoundException;
 import com.library.model.Person;
+import com.library.model.UniversityMember;
 
 /**
- * Validator for user identity, role privileges (BR01), quota limits, and outstanding obligations (BR05).
+ * Validator for user identity, membership privileges (BR01), quota limits, and outstanding obligations (BR05).
  */
 public final class MemberValidator {
 
@@ -16,12 +17,8 @@ public final class MemberValidator {
     public static final int FACULTY_MAX_QUOTA = 10;
 
     private MemberValidator() {
-        // Prevent instantiation
     }
 
-    /**
-     * Validates that the Person entity exists.
-     */
     public static void validatePersonExists(Person person, int personId) {
         if (person == null) {
             throw new ResourceNotFoundException("Độc giả/Người dùng", personId);
@@ -29,44 +26,40 @@ public final class MemberValidator {
     }
 
     /**
-     * Validates member borrowing eligibility according to Test 01 (BR01) and BR05.
-     * Throws specific BusinessException when an eligibility rule is violated.
+     * Validates university member borrowing eligibility according to BR01 and BR05.
      */
-    public static void validateBorrowEligibility(Person person, boolean hasOverdue, boolean hasFines, int activeBorrows) {
-        validatePersonExists(person, person.getPersonId());
+    public static void validateBorrowEligibility(UniversityMember member, boolean hasOverdue, boolean hasFines, int activeBorrows) {
+        if (member == null) {
+            throw new IneligibleMemberException("Chỉ UNIVERSITY_MEMBER mới được phép mượn sách theo quy chế BR01.");
+        }
 
-        String pType = person.getPersonType();
-
-        // BR01 / Test 01: External users (GUEST, EXTERNAL_AUTHOR) cannot borrow physical books home
-        if (!"STUDENT".equalsIgnoreCase(pType) && !"FACULTY".equalsIgnoreCase(pType)) {
+        String mType = member.getMemberType();
+        if (!"STUDENT".equalsIgnoreCase(mType) && !"FACULTY".equalsIgnoreCase(mType)) {
             throw new IneligibleMemberException(
-                    "Độc giả [" + person.getName() + "] mang vai trò '" + pType +
-                    "' là đối tượng bên ngoài, chỉ được phép đọc tài liệu tại chỗ theo quy chế BR01."
+                    "Thành viên [" + member.getName() + "] có loại '" + mType +
+                    "' không hợp lệ để mượn sách theo quy chế BR01."
             );
         }
 
-        // BR05: Blocking members with overdue unreturned books
         if (hasOverdue) {
             throw new OverdueBooksPendingException(
-                    "Độc giả [" + person.getName() + "] hiện đang giữ sách trễ hạn chưa trả. " +
+                    "Thành viên [" + member.getName() + "] hiện đang giữ sách trễ hạn chưa trả. " +
                     "Yêu cầu hoàn trả sách quá hạn trước khi tiếp tục mượn mới (BR05)."
             );
         }
 
-        // BR05: Blocking members with outstanding unpaid fines
         if (hasFines) {
             throw new OutstandingFineException(
-                    "Độc giả [" + person.getName() + "] có phiếu phạt quá hạn chưa thanh toán. " +
-                    "Yêu cầu tất toán công nợ phạt trước khi tiếp tục mượn mới (BR05)."
+                    "Thành viên [" + member.getName() + "] còn phiếu phạt ở trạng thái Unpaid. " +
+                    "Yêu cầu thanh toán trước khi tiếp tục mượn mới (BR05)."
             );
         }
 
-        // BR05: Borrowing quota enforcement
-        boolean isFaculty = "FACULTY".equalsIgnoreCase(pType);
+        boolean isFaculty = "FACULTY".equalsIgnoreCase(mType);
         int maxQuota = isFaculty ? FACULTY_MAX_QUOTA : STUDENT_MAX_QUOTA;
         if (activeBorrows >= maxQuota) {
             throw new BorrowQuotaExceededException(
-                    "Độc giả [" + person.getName() + "] đã đạt hạn mức mượn tối đa (" +
+                    "Thành viên [" + member.getName() + "] đã đạt hạn mức mượn tối đa (" +
                     activeBorrows + "/" + maxQuota + " cuốn) theo quy chế BR05."
             );
         }

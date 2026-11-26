@@ -1,6 +1,6 @@
 -- =============================================================================
 -- STORED PROCEDURES - Library Management System & Open Repository
--- Target schema: 01_create_database_updated.sql
+-- Target schema: 01_create_database_final_v2.sql
 -- =============================================================================
 USE library_db;
 DELIMITER //
@@ -9,7 +9,7 @@ DELIMITER //
 -- 1. sp_check_resource_access
 -- Preflight helper. p_person_id is PERSON.person_id, not member_id.
 -- BORROW_BOOK requires a UNIVERSITY_MEMBER whose quotas and restrictions pass.
--- READ_DIGITAL: supplied PERSON id is tested for authorship; otherwise guest path.
+-- READ_DIGITAL: no ID => public-only Guest; ID => Author bypass or License check.
 -- =============================================================================
 DROP PROCEDURE IF EXISTS sp_check_resource_access//
 CREATE PROCEDURE sp_check_resource_access(
@@ -129,7 +129,16 @@ BEGIN
             FROM RESOURCE
             WHERE resource_id = p_resource_id;
 
-            IF p_person_id IS NOT NULL AND p_person_id > 0 THEN
+            IF p_person_id IS NULL THEN
+                -- No ID supplied: anonymous Guest access depends only on is_public.
+                IF v_is_public = TRUE THEN
+                    SET p_allowed = TRUE;
+                    SET p_reason = 'Guest không định danh được truy cập journal công khai.';
+                ELSE
+                    SET p_reason = 'Guest không định danh chỉ được truy cập journal công khai.';
+                END IF;
+            ELSE
+                -- ID supplied: it must identify an existing PERSON.
                 SELECT COUNT(*) INTO v_person_exists
                 FROM PERSON
                 WHERE person_id = p_person_id;
@@ -141,33 +150,26 @@ BEGIN
                     FROM AUTHOR_OF
                     WHERE person_id = p_person_id
                       AND resource_id = p_resource_id;
-                END IF;
-            END IF;
 
-            IF p_person_id IS NOT NULL AND p_person_id > 0 AND v_person_exists = 0 THEN
-                SET p_allowed = FALSE;
-            ELSEIF v_is_author > 0 THEN
-                SET p_allowed = TRUE;
-                SET p_reason = 'Đã xác định là tác giả của journal.';
-            ELSEIF v_is_public = TRUE THEN
-                SET p_allowed = TRUE;
-                SET p_reason = 'Guest được truy cập journal công khai.';
-            ELSEIF p_person_id IS NULL OR p_person_id <= 0 THEN
-                SET p_reason = 'Guest không định danh chỉ được truy cập journal công khai.';
-            ELSE
-                SELECT COUNT(*) INTO v_required_count
-                FROM RESOURCE_LICENSE
-                WHERE resource_id = p_resource_id;
-
-                IF v_required_count = 0 THEN
-                    SET p_reason = 'Journal private chưa khai báo License yêu cầu.';
-                ELSE
-                    SET v_has_all = fn_has_all_required_licenses(p_person_id, p_resource_id);
-                    IF v_has_all THEN
+                    IF v_is_author > 0 THEN
                         SET p_allowed = TRUE;
-                        SET p_reason = 'PERSON có đầy đủ License bắt buộc.';
+                        SET p_reason = 'PERSON là tác giả của journal; bỏ qua kiểm tra License.';
                     ELSE
-                        SET p_reason = 'PERSON chưa có đầy đủ License bắt buộc.';
+                        SELECT COUNT(*) INTO v_required_count
+                        FROM RESOURCE_LICENSE
+                        WHERE resource_id = p_resource_id;
+
+                        IF v_required_count = 0 THEN
+                            SET p_reason = 'Journal không phải do PERSON này sáng tác và chưa khai báo License yêu cầu.';
+                        ELSE
+                            SET v_has_all = fn_has_all_required_licenses(p_person_id, p_resource_id);
+                            IF v_has_all THEN
+                                SET p_allowed = TRUE;
+                                SET p_reason = 'PERSON không phải tác giả nhưng có đầy đủ License bắt buộc.';
+                            ELSE
+                                SET p_reason = 'PERSON không phải tác giả và chưa có đầy đủ License bắt buộc.';
+                            END IF;
+                        END IF;
                     END IF;
                 END IF;
             END IF;
@@ -539,15 +541,17 @@ END//
 
 -- =============================================================================
 -- 7. sp_access_digital_journal
--- If person_id is supplied, it is resolved and checked against AUTHOR_OF for
--- this exact journal. Non-authors follow the Guest/access-license path.
--- No person_id means anonymous Guest: public journals only.
+-- No person_id: anonymous Guest, allowed only when RESOURCE.is_public = TRUE.
+-- person_id supplied: validate PERSON; author of this journal bypasses License;
+-- otherwise all required License packages must be granted to that PERSON.
+-- Successful accesses log person_id (nullable), journal_resource_id and a
+-- synthetic random documentation-range IP generated inside this procedure.
+-- No real client IP is accepted from the application or stored.
 -- =============================================================================
 DROP PROCEDURE IF EXISTS sp_access_digital_journal//
 CREATE PROCEDURE sp_access_digital_journal(
     IN  p_person_id   INT,
     IN  p_resource_id INT,
-    IN  p_ip_address  VARCHAR(45),
     OUT p_allowed     BOOLEAN,
     OUT p_reason      VARCHAR(255),
     OUT p_log_id      BIGINT
@@ -558,6 +562,9 @@ BEGIN
     DECLARE v_is_author      INT DEFAULT 0;
     DECLARE v_required_count INT DEFAULT 0;
     DECLARE v_has_all        BOOLEAN DEFAULT FALSE;
+    DECLARE v_ip_block       INT DEFAULT 0;
+    DECLARE v_ip_host        INT DEFAULT 0;
+    DECLARE v_generated_ip   VARCHAR(15) DEFAULT NULL;
 
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
@@ -584,51 +591,64 @@ BEGIN
         FROM RESOURCE
         WHERE resource_id = p_resource_id;
 
-        IF p_person_id IS NOT NULL AND p_person_id > 0 THEN
+        IF p_person_id IS NULL THEN
+            -- No ID: Guest path, public flag is the only access criterion.
+            IF v_is_public = TRUE THEN
+                SET p_allowed = TRUE;
+                SET p_reason = 'Guest không định danh được truy cập journal công khai.';
+            ELSE
+                SET p_reason = 'Guest không định danh chỉ được truy cập journal công khai.';
+            END IF;
+        ELSE
+            -- ID supplied: do not silently downgrade an invalid ID to Guest.
             SELECT COUNT(*) INTO v_person_count
             FROM PERSON
             WHERE person_id = p_person_id;
 
-            IF v_person_count > 0 THEN
+            IF v_person_count = 0 THEN
+                SET p_reason = 'PERSON ID không tồn tại.';
+            ELSE
                 SELECT COUNT(*) INTO v_is_author
                 FROM AUTHOR_OF
                 WHERE person_id = p_person_id
                   AND resource_id = p_resource_id;
-            END IF;
-        END IF;
 
-        IF p_person_id IS NOT NULL AND p_person_id > 0 AND v_person_count = 0 THEN
-            SET p_reason = 'PERSON ID không tồn tại.';
-        ELSEIF v_is_author > 0 THEN
-            SET p_allowed = TRUE;
-            SET p_reason = 'Đã xác định là tác giả của journal; bỏ qua License.';
-        ELSEIF v_is_public = TRUE THEN
-            SET p_allowed = TRUE;
-            SET p_reason = 'Guest được truy cập journal công khai.';
-        ELSEIF p_person_id IS NULL OR p_person_id <= 0 THEN
-            SET p_reason = 'Guest không định danh chỉ được truy cập journal công khai.';
-        ELSE
-            SELECT COUNT(*) INTO v_required_count
-            FROM RESOURCE_LICENSE
-            WHERE resource_id = p_resource_id;
-
-            IF v_required_count = 0 THEN
-                SET p_reason = 'Journal private chưa khai báo License yêu cầu.';
-            ELSE
-                SET v_has_all = fn_has_all_required_licenses(p_person_id, p_resource_id);
-                IF v_has_all THEN
+                IF v_is_author > 0 THEN
                     SET p_allowed = TRUE;
-                    SET p_reason = 'PERSON không phải tác giả nhưng có đầy đủ License bắt buộc.';
+                    SET p_reason = 'PERSON là tác giả của journal; bỏ qua kiểm tra License.';
                 ELSE
-                    SET p_reason = 'PERSON không phải tác giả và chưa có đầy đủ License bắt buộc.';
+                    SELECT COUNT(*) INTO v_required_count
+                    FROM RESOURCE_LICENSE
+                    WHERE resource_id = p_resource_id;
+
+                    IF v_required_count = 0 THEN
+                        SET p_reason = 'Journal không phải do PERSON này sáng tác và chưa khai báo License yêu cầu.';
+                    ELSE
+                        SET v_has_all = fn_has_all_required_licenses(p_person_id, p_resource_id);
+                        IF v_has_all THEN
+                            SET p_allowed = TRUE;
+                            SET p_reason = 'PERSON không phải tác giả nhưng có đầy đủ License bắt buộc.';
+                        ELSE
+                            SET p_reason = 'PERSON không phải tác giả và chưa có đầy đủ License bắt buộc.';
+                        END IF;
+                    END IF;
                 END IF;
             END IF;
         END IF;
 
-        -- ACCESS_LOG stores only successful accesses; denied attempts are not logged.
+        -- Log successful accesses only. Every click generates a fresh synthetic
+        -- IP from TEST-NET documentation ranges; it is not the user's real IP.
         IF p_allowed = TRUE THEN
-            INSERT INTO ACCESS_LOG (journal_resource_id, ip_address)
-            VALUES (p_resource_id, p_ip_address);
+            SET v_ip_block = FLOOR(RAND() * 3);
+            SET v_ip_host = FLOOR(RAND() * 254) + 1;
+            SET v_generated_ip = CASE v_ip_block
+                WHEN 0 THEN CONCAT('192.0.2.', v_ip_host)
+                WHEN 1 THEN CONCAT('198.51.100.', v_ip_host)
+                ELSE CONCAT('203.0.113.', v_ip_host)
+            END;
+
+            INSERT INTO ACCESS_LOG (person_id, journal_resource_id, ip_address)
+            VALUES (p_person_id, p_resource_id, v_generated_ip);
             SET p_log_id = LAST_INSERT_ID();
         END IF;
 

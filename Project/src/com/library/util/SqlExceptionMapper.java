@@ -106,6 +106,7 @@ public final class SqlExceptionMapper {
             case "BR02_ALREADY_RETURNED":
                 return new BookAlreadyReturnedException(message);
             case "BR04_LICENSE_EXPIRED":
+            case "BR04_LICENSE_REQUIRED":
                 return new LicenseExpiredException(message);
             case "BR05_OVERDUE_PENDING":
                 return new OverdueBooksPendingException(message);

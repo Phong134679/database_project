@@ -132,13 +132,17 @@ function renderResources(list) {
           ? `<a href="${r.url}" target="_blank" class="btn btn-success btn-sm" style="text-decoration: none;">📖 Đọc trực tuyến</a>`
           : `<a href="${r.url}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration: none;">📖 Xem trực tuyến</a>`);
 
+    const licenseCol = r.requiredLicenseCount > 0
+      ? `<span class="badge badge-warning">${r.requiredLicenseCount} gói License</span>`
+      : '<span class="badge badge-secondary">Không</span>';
+
     return `
       <tr>
         <td><strong>#${r.resourceId}</strong></td>
         <td><strong>${r.title}</strong></td>
         <td>${typeBadge}</td>
         <td>${r.topic || '-'}</td>
-        <td>${formatDate(r.publishDate)}</td>
+        <td>${licenseCol}</td>
         <td>${extraInfo}</td>
         <td>${actionCol}</td>
       </tr>
@@ -230,7 +234,7 @@ function renderBorrows(list) {
     return `
       <tr>
         <td><strong>#${b.borrowId}</strong></td>
-        <td><strong>${b.memberName}</strong> (ID: ${b.memberPersonId})</td>
+        <td><strong>${b.memberName}</strong> (<code>${b.memberId}</code>)</td>
         <td><span class="badge badge-secondary">${b.memberType}</span></td>
         <td>${b.bookTitle}</td>
         <td><code>${b.copyId}</code></td>
@@ -246,8 +250,8 @@ function renderBorrows(list) {
 
 async function handleBorrowSubmit(e) {
   e.preventDefault();
-  const memberId = parseInt(document.getElementById('borrowMemberSelect').value);
-  const copyId = parseInt(document.getElementById('borrowCopySelect').value);
+  const memberId = document.getElementById('borrowMemberSelect').value.trim();
+  const copyId = document.getElementById('borrowCopySelect').value.trim();
 
   if (!memberId || !copyId) {
     showAlert('danger', 'Vui lòng chọn cả thành viên và bản sao sách hợp lệ.');
@@ -267,7 +271,7 @@ async function handleBorrowSubmit(e) {
     const data = await res.json();
 
     if (res.ok && data.success) {
-      showAlert('success', `<strong>Mượn sách thành công!</strong> Đã tạo phiếu mượn cho độc giả #${memberId} và gán trạng thái bản sao #${copyId} sang 'Borrowed'.`);
+      showAlert('success', `<strong>Mượn sách thành công!</strong> Phiếu mượn #${data.borrowId || ''} cho thành viên <code>${memberId}</code>, bản sao <code>${copyId}</code> (Hạn trả: ${data.dueDate || '-'}).`);
       document.getElementById('borrowForm').reset();
       loadBorrows();
       loadCopies();
@@ -390,7 +394,7 @@ function renderFines(list) {
       <tr>
         <td><strong>#${f.fineId}</strong></td>
         <td>Lượt #${f.borrowId}</td>
-        <td><strong>${f.memberName}</strong> (ID: ${f.memberPersonId})</td>
+        <td><strong>${f.memberName}</strong> (<code>${f.memberId}</code>)</td>
         <td>${f.bookTitle}</td>
         <td><strong>${formatVND(f.totalFineAmount)}</strong></td>
         <td>${statusBadge}</td>
@@ -468,8 +472,6 @@ async function handleJournalAccessSubmit(e) {
   const personSelect = document.getElementById('accessPersonSelect');
   const personId = personSelect && personSelect.value ? parseInt(personSelect.value) : null;
   const journalId = parseInt(document.getElementById('accessJournalSelect').value);
-  const ipAddress = document.getElementById('accessIpInput').value.trim() || '127.0.0.1';
-  const accessDate = document.getElementById('accessDateInput').value;
 
   if (!journalId) {
     alert("Vui lòng chọn tài liệu số.");
@@ -485,7 +487,7 @@ async function handleJournalAccessSubmit(e) {
     const res = await fetch(`${API_BASE}/api/digital-journals/${journalId}/access`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ personId, ipAddress, accessDate })
+      body: JSON.stringify({ personId })
     });
     const data = await res.json();
 
@@ -495,7 +497,7 @@ async function handleJournalAccessSubmit(e) {
       resultBox.innerHTML = `
         <div class="alert alert-success">
           <div>
-            <h4 style="font-weight: 700; margin-bottom: 4px;">✅ CẤP QUYỀN TRUY CẬP THÀNH CÔNG (BR04 / BR12 VALIDATED)</h4>
+            <h4 style="font-weight: 700; margin-bottom: 4px;">✅ CẤP QUYỀN TRUY CẬP THÀNH CÔNG (Log #${data.logId || '-'})</h4>
             <p>${data.message}</p>
             <p style="margin-top: 8px;">
               Tài liệu: <strong>${data.title}</strong><br>
@@ -511,11 +513,8 @@ async function handleJournalAccessSubmit(e) {
       resultBox.innerHTML = `
         <div class="alert alert-danger">
           <div>
-            <h4 style="font-weight: 700; margin-bottom: 4px;">⛔ TRUY CẬP BỊ TỪ CHỐI [${data.errorCode || 'BR04_LICENSE_EXPIRED'}]</h4>
+            <h4 style="font-weight: 700; margin-bottom: 4px;">⛔ TRUY CẬP BỊ TỪ CHỐI [${data.errorCode || 'ACCESS_DENIED'}]</h4>
             <p>${data.message}</p>
-            <p style="margin-top: 8px; font-size: 0.85rem; color: #450a0a;">
-              * Quy chế BR04 & BR12: Người dùng bắt buộc phải sở hữu gói bản quyền (GRANTED_LICENSE) còn hiệu lực cho tài liệu này vào ngày ${accessDate}.
-            </p>
           </div>
         </div>
       `;
@@ -534,28 +533,32 @@ async function handleJournalAccessSubmit(e) {
 
 async function loadAccessLogs() {
   const tbody = document.getElementById('accessLogsBody');
-  tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Đang tải nhật ký...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Đang tải nhật ký...</td></tr>';
   try {
     const res = await fetch(`${API_BASE}/api/access-logs`);
     if (!res.ok) throw new Error("HTTP " + res.status);
     state.accessLogs = await res.json();
     renderAccessLogs(state.accessLogs);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="3" class="empty-state" style="color: var(--danger);">Lỗi tải nhật ký: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-state" style="color: var(--danger);">Lỗi tải nhật ký: ${err.message}</td></tr>`;
   }
 }
 
 function renderAccessLogs(list) {
   const tbody = document.getElementById('accessLogsBody');
   if (!list || list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Chưa có bản ghi nhật ký truy cập nào.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Chưa có bản ghi nhật ký truy cập nào.</td></tr>';
     return;
   }
 
   tbody.innerHTML = list.map(l => {
+    const actor = l.personId
+      ? `<strong>${l.personName || l.accessedAs}</strong> (Person #${l.personId})`
+      : '<span class="badge badge-secondary">Guest</span>';
     return `
       <tr>
         <td><strong>#${l.logId}</strong></td>
+        <td>${actor}</td>
         <td>${l.journalTitle ? `<strong>${l.journalTitle}</strong> (ID: ${l.journalResourceId})` : 'Tài nguyên #' + l.journalResourceId}</td>
         <td><code>${l.ipAddress || '-'}</code></td>
       </tr>
@@ -568,7 +571,7 @@ function renderAccessLogs(list) {
 // =============================================================================
 async function loadMembers() {
   const tbody = document.getElementById('membersBody');
-  tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Đang tải danh sách độc giả...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Đang tải danh sách độc giả...</td></tr>';
   try {
     const res = await fetch(`${API_BASE}/api/members`);
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -576,46 +579,46 @@ async function loadMembers() {
     renderMembers(state.members);
     populateMemberDropdowns();
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="10" class="empty-state" style="color: var(--danger);">Lỗi tải độc giả: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="color: var(--danger);">Lỗi tải độc giả: ${err.message}</td></tr>`;
   }
 }
 
 function renderMembers(list) {
   const tbody = document.getElementById('membersBody');
   if (!list || list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Chưa có người dùng nào trong cơ sở dữ liệu.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Chưa có người dùng nào trong cơ sở dữ liệu.</td></tr>';
     return;
   }
 
   tbody.innerHTML = list.map(m => {
     let roleBadge = '';
-    if (m.personType === 'STUDENT') roleBadge = '<span class="badge badge-info">Sinh viên</span>';
-    else if (m.personType === 'FACULTY') roleBadge = '<span class="badge badge-primary">Giảng viên</span>';
-    else if (m.personType === 'GUEST') roleBadge = '<span class="badge badge-secondary">Khách ngoài</span>';
-    else roleBadge = '<span class="badge badge-warning">Tác giả ngoài</span>';
+    if (m.memberType === 'STUDENT') roleBadge = '<span class="badge badge-info">Sinh viên</span>';
+    else if (m.memberType === 'FACULTY') roleBadge = '<span class="badge badge-primary">Giảng viên</span>';
+    else roleBadge = '<span class="badge badge-secondary">Ngoài trường</span>';
+    if (m.isAuthor) {
+      roleBadge += ' <span class="badge badge-warning">Tác giả</span>';
+    }
 
     const eligibleBadge = m.isEligibleToBorrow
       ? '<span class="badge badge-success">Đủ điều kiện</span>'
       : `<span class="badge badge-danger" title="${m.ineligibilityReason || ''}">Không đủ điều kiện</span>`;
 
-    const overdueAlert = m.hasOverdue
-      ? '<span style="color: var(--danger); font-weight: 700;">Có sách quá hạn!</span>'
-      : 'Không';
-
     const fineAlert = m.hasUnpaidFines
       ? '<span style="color: var(--danger); font-weight: 700;">Đang nợ phạt!</span>'
       : 'Không';
+
+    const profileParts = [m.major, m.academicRank].filter(Boolean);
+    const profileText = profileParts.length > 0 ? profileParts.join(' / ') : '-';
+    const quotaText = m.isMember ? `<strong>${m.activeBorrowsCount || 0}</strong> / ${m.borrowQuota || 0}` : '-';
 
     return `
       <tr>
         <td><strong>#${m.personId}</strong></td>
         <td><strong>${m.name}</strong><br><small style="color: var(--text-muted);">${m.email || '-'}</small></td>
-        <td><code>${m.ssn}</code></td>
         <td>${roleBadge}</td>
-        <td>${m.memberId || '-'}</td>
-        <td>${m.department || '-'}</td>
-        <td>${m.major || m.academicRank || '-'}</td>
-        <td><strong>${m.activeBorrowsCount || 0}</strong> cuốn</td>
+        <td>${m.memberId ? `<code>${m.memberId}</code>` : '-'}</td>
+        <td>${profileText}</td>
+        <td>${quotaText}</td>
         <td>${fineAlert}</td>
         <td>${eligibleBadge}</td>
       </tr>
@@ -628,22 +631,23 @@ function populateMemberDropdowns() {
   const accessSelect = document.getElementById('accessPersonSelect');
 
   if (borrowSelect) {
-    borrowSelect.innerHTML = '<option value="">-- Chọn độc giả mượn sách --</option>';
-    state.members.forEach(m => {
+    borrowSelect.innerHTML = '<option value="">-- Chọn thành viên mượn sách --</option>';
+    state.members.filter(m => m.isMember).forEach(m => {
       const opt = document.createElement('option');
-      opt.value = m.personId;
+      opt.value = m.memberId;
       const statusNote = m.isEligibleToBorrow ? " [Đủ điều kiện]" : " [Không đủ điều kiện]";
-      opt.textContent = `[ID: ${m.personId}] ${m.name} (${m.personType})${statusNote}`;
+      opt.textContent = `[${m.memberId}] ${m.name} (${m.memberType})${statusNote}`;
       borrowSelect.appendChild(opt);
     });
   }
 
   if (accessSelect) {
-    accessSelect.innerHTML = '<option value="">-- Chọn độc giả truy cập --</option>';
+    accessSelect.innerHTML = '<option value="">-- Guest (Không nhập ID) --</option>';
     state.members.forEach(m => {
       const opt = document.createElement('option');
       opt.value = m.personId;
-      opt.textContent = `[ID: ${m.personId}] ${m.name} (${m.personType})`;
+      const tag = m.isMember ? m.memberType : 'Non-member';
+      opt.textContent = `[Person #${m.personId}] ${m.name} (${tag})`;
       accessSelect.appendChild(opt);
     });
   }
@@ -654,7 +658,8 @@ function populateMemberDropdowns() {
     state.members.forEach(m => {
       const opt = document.createElement('option');
       opt.value = m.personId;
-      opt.textContent = `[ID: ${m.personId}] ${m.name} (${m.personType})`;
+      const tag = m.isMember ? m.memberType : 'Non-member';
+      opt.textContent = `[Person #${m.personId}] ${m.name} (${tag})`;
       grantSelect.appendChild(opt);
     });
   }
@@ -674,7 +679,7 @@ async function loadLicenses() {
       list.forEach(lp => {
         const opt = document.createElement('option');
         opt.value = lp.licenseId;
-        opt.textContent = `[ID: ${lp.licenseId}] ${lp.licenseName} (${lp.provider || '-'})`;
+        opt.textContent = `[ID: ${lp.licenseId}] ${lp.licenseName}`;
         select.appendChild(opt);
       });
     }
@@ -698,10 +703,10 @@ async function loadGrantedLicenses() {
     tbody.innerHTML = list.map(g => `
       <tr>
         <td><strong>#${g.grantId}</strong></td>
-        <td><strong>${g.personName}</strong> (ID: ${g.personId})</td>
-        <td><span class="badge badge-secondary">${g.personType}</span></td>
+        <td><strong>${g.personName}</strong> (Person #${g.personId})</td>
+        <td>${g.memberId ? `<code>${g.memberId}</code> (${g.memberType})` : '<span class="badge badge-secondary">Non-member</span>'}</td>
         <td><strong>${g.licenseName}</strong> (ID: ${g.licenseId})</td>
-        <td>${g.provider || '-'}</td>
+        <td>${g.description || '-'}</td>
         <td><button class="btn btn-danger btn-sm" onclick="revokeGrantedLicense(${g.grantId})">🗑️ Thu hồi</button></td>
       </tr>
     `).join('');

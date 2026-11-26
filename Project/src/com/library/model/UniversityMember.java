@@ -1,11 +1,11 @@
 package com.library.model;
 
 /**
- * Subclass of Person representing internal university members (Student or Faculty).
+ * Subclass of Person representing internal university members (STUDENT or FACULTY).
+ * member_id is an independent primary key; person_id is a UNIQUE FK to PERSON.
  */
 public class UniversityMember extends Person {
     private String memberId;
-    private String department;
     private String memberType;
     private String major;
     private String academicRank;
@@ -14,12 +14,11 @@ public class UniversityMember extends Person {
         super();
     }
 
-    public UniversityMember(int personId, String ssn, String name, String address, String email, String phone,
-                            String personType, String memberId, String department, String memberType,
+    public UniversityMember(int personId, String name, String email, String phone,
+                            String memberId, String memberType,
                             String major, String academicRank) {
-        super(personId, ssn, name, address, email, phone, personType);
+        super(personId, name, email, phone);
         this.memberId = memberId;
-        this.department = department;
         this.memberType = memberType;
         this.major = major;
         this.academicRank = academicRank;
@@ -31,14 +30,6 @@ public class UniversityMember extends Person {
 
     public void setMemberId(String memberId) {
         this.memberId = memberId;
-    }
-
-    public String getDepartment() {
-        return department;
-    }
-
-    public void setDepartment(String department) {
-        this.department = department;
     }
 
     public String getMemberType() {
@@ -69,10 +60,8 @@ public class UniversityMember extends Person {
     public String toString() {
         return "UniversityMember{" +
                 "personId=" + getPersonId() +
-                ", ssn='" + getSsn() + '\'' +
                 ", name='" + getName() + '\'' +
                 ", memberId='" + memberId + '\'' +
-                ", department='" + department + '\'' +
                 ", memberType='" + memberType + '\'' +
                 ", major='" + major + '\'' +
                 ", academicRank='" + academicRank + '\'' +

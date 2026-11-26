@@ -14,6 +14,8 @@ erDiagram
     RESOURCE ||--o| PHYSICAL_BOOK : "physical subtype"
     RESOURCE ||--o| DIGITAL_JOURNAL : "digital subtype"
     PHYSICAL_BOOK ||--o{ BOOK_COPY : "has copies"
+    DIGITAL_JOURNAL ||--o{ ACCESS_LOG : "has access records"
+    PERSON o|--o{ ACCESS_LOG : "optional identity on access"
 
     RESOURCE ||--o{ RESOURCE_LICENSE : "requires"
     LICENSE_PACKAGE ||--o{ RESOURCE_LICENSE : "required by"
@@ -106,8 +108,9 @@ erDiagram
 
     ACCESS_LOG {
         bigint log_id PK
-        int journal_resource_id
-        varchar ip_address
+        int person_id FK "nullable; NULL for Guest"
+        int journal_resource_id FK
+        varchar ip_address "synthetic random IP per successful access"
     }
 ```
 
@@ -119,4 +122,5 @@ erDiagram
 - Any `PERSON` can be an author through `AUTHOR_OF`. There is no `EXTERNAL_AUTHOR` table or `PERSON.person_type` discriminator.
 - Resource kind is represented by the subtype table (`PHYSICAL_BOOK` or `DIGITAL_JOURNAL`), not a `RESOURCE.resource_type` column.
 - Multiple `FINE` rows may exist for one `BORROW`: a new late penalty is added to an unpaid fine; if prior fines are settled, a new fine row preserves the settlement history.
-- `ACCESS_LOG.journal_resource_id` remains without a foreign-key constraint, matching the previous logging design.
+- `ACCESS_LOG.person_id` is nullable and references `PERSON.person_id`; it is populated when a valid ID was supplied and NULL for anonymous Guest. `journal_resource_id` is mandatory and references `DIGITAL_JOURNAL.resource_id`. `ip_address` is generated randomly by `sp_access_digital_journal` for each successful Access; it is synthetic and is not the client real IP. Only successful accesses are logged; access time and allow/deny status are not stored.
+- `RESOURCE.is_public` remains on the parent `RESOURCE` entity and is used by the Guest branch; there is no duplicated `is_public` column in `DIGITAL_JOURNAL`.

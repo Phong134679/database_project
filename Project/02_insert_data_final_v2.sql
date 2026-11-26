@@ -170,15 +170,9 @@ INSERT INTO PAYMENT_TRANSACTION (transaction_id, fine_id, payment_date) VALUES
 
 -- =============================================================================
 -- 11. ACCESS_LOG
--- The table is deliberately limited to successful access resource/IP records.
+-- Intentionally starts empty. Every row and synthetic IP is created at runtime
+-- by sp_access_digital_journal after a successful Access action.
+-- person_id is NULL for Guest and populated for a valid identified PERSON.
 -- =============================================================================
-INSERT INTO ACCESS_LOG (log_id, journal_resource_id, ip_address) VALUES
-    (1,  3,  '192.168.1.50'),
-    (2,  3,  '192.168.1.100'),
-    (3,  4,  '192.168.1.51'),
-    (4,  5,  '10.0.0.25'),
-    (5,  6,  '10.0.0.26'),
-    (6,  9,  '172.16.0.10'),
-    (7, 10,  '172.16.0.11');
 
 COMMIT;

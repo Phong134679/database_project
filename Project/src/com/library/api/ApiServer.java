@@ -272,20 +272,23 @@ public class ApiServer {
         private void handleCreateBorrow(HttpExchange exchange) throws IOException {
             try {
                 JsonObject json = HttpUtils.readJsonBody(exchange);
-                if (!json.has("memberId") || !json.has("copyId")) {
+                if (!json.has("memberId") || json.get("memberId").isJsonNull()
+                        || !json.has("copyId") || json.get("copyId").isJsonNull()) {
                     HttpUtils.sendError(exchange, 400, "INVALID_INPUT", "Yêu cầu cả 'memberId' và 'copyId'.");
                     return;
                 }
 
-                int memberId = json.get("memberId").getAsInt();
+                String memberId = json.get("memberId").getAsString();
                 String copyId = json.get("copyId").getAsString();
 
-                boolean success = borrowService.processNewBorrow(memberId, copyId);
+                Map<String, Object> borrowResult = borrowService.borrowBook(memberId, copyId);
                 Map<String, Object> res = new LinkedHashMap<>();
-                res.put("success", success);
+                res.put("success", true);
                 res.put("message", "Mượn sách thành công.");
-                res.put("memberId", memberId);
-                res.put("copyId", copyId);
+                res.put("borrowId", borrowResult.get("borrowId"));
+                res.put("memberId", borrowResult.get("memberId"));
+                res.put("copyId", borrowResult.get("copyId"));
+                res.put("dueDate", borrowResult.get("dueDate"));
                 HttpUtils.sendJson(exchange, 201, res);
             } catch (Exception e) {
                 HttpUtils.handleException(exchange, e);
@@ -295,22 +298,23 @@ public class ApiServer {
         private void handleReturn(HttpExchange exchange, int borrowId) throws IOException {
             try {
                 JsonObject json = HttpUtils.readJsonBody(exchange);
-                LocalDate returnDate = LocalDate.now();
+                LocalDate returnDate = null;
                 if (json != null && json.has("returnDate") && !json.get("returnDate").isJsonNull()) {
                     String dateStr = json.get("returnDate").getAsString();
                     if (!dateStr.trim().isEmpty()) {
-                        returnDate = LocalDate.parse(dateStr);
+                        returnDate = LocalDate.parse(dateStr.trim());
                     }
                 }
 
-                boolean success = borrowService.returnBook(borrowId, returnDate);
+                Map<String, Object> returnResult = borrowService.returnBookWithResult(borrowId, returnDate);
+                int fineId = returnResult.get("fineId") != null ? ((Number) returnResult.get("fineId")).intValue() : 0;
+                Fine fine = fineId > 0 ? fineService.getFineDetails(fineId) : null;
 
-                Fine fine = fineService.getFineByBorrowId(borrowId);
                 Map<String, Object> res = new LinkedHashMap<>();
-                res.put("success", success);
+                res.put("success", true);
                 res.put("message", "Trả sách thành công.");
                 res.put("borrowId", borrowId);
-                res.put("returnDate", returnDate.toString());
+                res.put("returnDate", (returnDate != null ? returnDate : LocalDate.now()).toString());
                 res.put("fineGenerated", fine != null);
                 if (fine != null) {
                     Map<String, Object> fineInfo = new LinkedHashMap<>();
@@ -475,48 +479,46 @@ public class ApiServer {
             try {
                 JsonObject json = HttpUtils.readJsonBody(exchange);
                 Integer personId = null;
-                if (json.has("personId") && !json.get("personId").isJsonNull() && !json.get("personId").getAsString().trim().isEmpty()) {
-                    try {
-                        personId = json.get("personId").getAsInt();
-                    } catch (Exception ignored) {}
+                if (json.has("personId") && !json.get("personId").isJsonNull()) {
+                    String raw = json.get("personId").getAsString().trim();
+                    if (!raw.isEmpty()) {
+                        try {
+                            personId = Integer.parseInt(raw);
+                        } catch (NumberFormatException e) {
+                            HttpUtils.sendError(exchange, 400, "INVALID_INPUT", "personId phải là số nguyên.");
+                            return;
+                        }
+                    }
                 }
 
-                String ipAddress = json.has("ipAddress") && !json.get("ipAddress").isJsonNull()
-                        ? json.get("ipAddress").getAsString()
-                        : null;
-
                 DigitalJournal journal = journalService.getJournalDetails(journalId);
+                Map<String, Object> accessResult = journalService.accessDigitalJournalWithResult(personId, journalId);
+                boolean allowed = Boolean.TRUE.equals(accessResult.get("allowed"));
+                String reason = (String) accessResult.get("reason");
+                long logId = ((Number) accessResult.get("logId")).longValue();
 
-                try {
+                if (allowed) {
                     boolean isAuthor = personId != null && personId > 0 && journalRepo.isAuthorOfResource(personId, journalId);
-                    boolean granted = journalService.accessDigitalJournal(personId, journalId, ipAddress);
                     Map<String, Object> res = new LinkedHashMap<>();
-                    res.put("accessGranted", granted);
+                    res.put("accessGranted", true);
+                    res.put("logId", logId);
                     res.put("isPublic", journal.isPublic());
                     res.put("isAuthor", isAuthor);
-                    String msg;
-                    if (isAuthor) {
-                        msg = "Truy cập được phê duyệt (Đặc quyền Tác giả AUTHOR_OF: Tác giả được tự do đọc tác phẩm của mình).";
-                    } else if (journal.isPublic()) {
-                        msg = "Truy cập được phê duyệt (Tài nguyên công khai is_public = TRUE - Đọc trực tuyến tự do).";
-                    } else {
-                        msg = "Truy cập được phê duyệt (Người dùng sở hữu đầy đủ toàn bộ License yêu cầu).";
-                    }
-                    res.put("message", msg);
+                    res.put("message", reason);
                     res.put("journalId", journalId);
                     res.put("title", journal.getTitle());
                     res.put("url", journal.getUrl());
                     res.put("format", journal.getFormat());
                     res.put("fileSize", journal.getFileSize());
                     HttpUtils.sendJson(exchange, 200, res);
-                } catch (LibraryException ex) {
-                    // BR04 / BR12 license expired or not granted
+                } else {
                     Map<String, Object> res = new LinkedHashMap<>();
                     res.put("accessGranted", false);
-                    res.put("errorCode", ex.getErrorCode());
-                    res.put("message", ex.getMessage());
+                    res.put("logId", 0);
+                    res.put("errorCode", "ACCESS_DENIED");
+                    res.put("message", reason);
                     res.put("journalId", journalId);
-                    res.put("title", journal != null ? journal.getTitle() : "Journal " + journalId);
+                    res.put("title", journal.getTitle());
                     HttpUtils.sendJson(exchange, 403, res);
                 }
             } catch (Exception e) {

@@ -1,6 +1,5 @@
 package com.library.service;
 
-import com.library.exception.BookNotAvailableException;
 import com.library.model.Borrow;
 import com.library.repository.BorrowRepository;
 import com.library.repository.FineRepository;
@@ -16,17 +15,18 @@ import java.sql.Date;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Service class implementing business logic operations for borrow transactions.
- * Interacts with MySQL via BorrowRepository, FineRepository, and MemberService.
- * Enforces Test 01 (BR01), BR05, BR10, and Test 03 (FR05).
+ * Delegates atomic borrow/return checks and updates to MySQL Stored Procedures
+ * sp_borrow_book and sp_return_book (v2 schema: VARCHAR member_id & copy_id).
  */
 public class BorrowService {
 
-    public static final double OVERDUE_PENALTY_PER_BORROW = 50000.0; // 50.000 VND cho mỗi lượt mượn quá hạn (x 50)
+    public static final double OVERDUE_PENALTY_PER_BORROW = 50000.0;
 
     private BorrowRepository borrowRepository;
     private FineRepository fineRepository;
@@ -57,27 +57,18 @@ public class BorrowService {
     }
 
     /**
-     * Processes a new book borrowing transaction by delegating business checks
-     * and atomic updates to MySQL Stored Procedure sp_borrow_book.
+     * Processes a new book borrowing transaction by calling sp_borrow_book(member_id, copy_id, OUT borrow_id, OUT due_date).
      */
-    public boolean processNewBorrow(int memberId, String copyId) {
-        DataValidator.validatePositiveId(memberId, "Member Person ID");
+    public Map<String, Object> borrowBook(String memberId, String copyId) {
+        DataValidator.validateNonEmptyString(memberId, "Member ID");
         DataValidator.validateNonEmptyString(copyId, "Copy ID");
-
-        int numericCopyId;
-        try {
-            numericCopyId = Integer.parseInt(copyId.trim());
-        } catch (NumberFormatException e) {
-            throw new BookNotAvailableException("Bản sao sách [" + copyId + "] không tồn tại.");
-        }
-        DataValidator.validatePositiveId(numericCopyId, "Copy ID");
 
         String sql = "{CALL sp_borrow_book(?, ?, ?, ?)}";
         try (Connection conn = DatabaseConnection.getConnection();
              CallableStatement cs = conn.prepareCall(sql)) {
 
-            cs.setInt(1, memberId);
-            cs.setInt(2, numericCopyId);
+            cs.setString(1, memberId.trim());
+            cs.setString(2, copyId.trim());
             cs.registerOutParameter(3, Types.INTEGER);
             cs.registerOutParameter(4, Types.DATE);
             cs.execute();
@@ -85,17 +76,24 @@ public class BorrowService {
             int borrowId = cs.getInt(3);
             Date dueDate = cs.getDate(4);
             System.out.println("[BorrowService] SUCCESS: Borrow ID " + borrowId +
-                    " created for Member " + memberId + ", Copy " + numericCopyId +
+                    " created for Member " + memberId.trim() + ", Copy " + copyId.trim() +
                     " (Due Date: " + dueDate + ")");
-            return true;
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("borrowId", borrowId);
+            result.put("memberId", memberId.trim());
+            result.put("copyId", copyId.trim());
+            result.put("dueDate", dueDate != null ? dueDate.toString() : null);
+            return result;
         } catch (SQLException e) {
             SqlExceptionMapper.throwMapped(e);
-            return false;
+            return null;
         }
     }
 
-    public boolean processNewBorrow(int memberId, int copyId) {
-        return processNewBorrow(memberId, String.valueOf(copyId));
+    public boolean processNewBorrow(String memberId, String copyId) {
+        borrowBook(memberId, copyId);
+        return true;
     }
 
     /**
@@ -106,10 +104,9 @@ public class BorrowService {
     }
 
     /**
-     * Processes book return by delegating business checks, copy release, and
-     * automatic overdue fine creation to MySQL Stored Procedure sp_return_book.
+     * Processes book return by calling sp_return_book(borrow_id, return_date, OUT fine_id, OUT fine_amount).
      */
-    public boolean returnBook(int borrowId, LocalDate returnDate) {
+    public Map<String, Object> returnBookWithResult(int borrowId, LocalDate returnDate) {
         DataValidator.validatePositiveId(borrowId, "Borrow ID");
 
         String sql = "{CALL sp_return_book(?, ?, ?, ?)}";
@@ -129,33 +126,34 @@ public class BorrowService {
             int fineId = cs.getInt(3);
             BigDecimal fineAmount = cs.getBigDecimal(4);
             if (fineId > 0) {
-                System.out.println("[BorrowService] OVERDUE DETECTED. Generated Fine ID: " + fineId +
+                System.out.println("[BorrowService] OVERDUE DETECTED. Fine ID: " + fineId +
                         " (Amount: " + String.format("%,.0f", fineAmount != null ? fineAmount.doubleValue() : 0.0) + " VND)");
             }
-            return true;
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("borrowId", borrowId);
+            result.put("fineId", fineId);
+            result.put("fineAmount", fineAmount);
+            return result;
         } catch (SQLException e) {
             SqlExceptionMapper.throwMapped(e);
-            return false;
+            return null;
         }
     }
 
-    /**
-     * Retrieves all borrows with detailed member name and book title for UI.
-     */
+    public boolean returnBook(int borrowId, LocalDate returnDate) {
+        returnBookWithResult(borrowId, returnDate);
+        return true;
+    }
+
     public List<Map<String, Object>> getAllBorrowsDetailed() {
         return borrowRepository.findAllBorrowsDetailed();
     }
 
-    /**
-     * Retrieves all book copies for UI.
-     */
     public List<Map<String, Object>> getAllCopiesDetailed() {
         return borrowRepository.findAllCopiesDetailed();
     }
 
-    /**
-     * Calculates the overdue penalty amount for a borrow transaction.
-     */
     public double calculateLatePenalty(int borrowId) {
         DataValidator.validatePositiveId(borrowId, "Borrow ID");
         Borrow borrow = borrowRepository.findById(borrowId);
@@ -173,25 +171,16 @@ public class BorrowService {
         return 0.0;
     }
 
-    /**
-     * Calculates total overdue penalty for a member based on overdue borrow count x 50.
-     */
-    public double calculateMemberOverduePenalty(int memberPersonId) {
-        DataValidator.validatePositiveId(memberPersonId, "Member Person ID");
-        int overdueCount = borrowRepository.countOverdueBorrowsByMember(memberPersonId);
+    public double calculateMemberOverduePenalty(String memberId) {
+        DataValidator.validateNonEmptyString(memberId, "Member ID");
+        int overdueCount = borrowRepository.countOverdueBorrowsByMember(memberId);
         return overdueCount * OVERDUE_PENALTY_PER_BORROW;
     }
 
-    /**
-     * Retrieves all overdue borrow transactions.
-     */
     public List<Borrow> getOverdueBorrows() {
         return borrowRepository.findOverdueBorrows();
     }
 
-    /**
-     * Retrieves detailed information of a borrow transaction.
-     */
     public Borrow getBorrowDetails(int borrowId) {
         DataValidator.validatePositiveId(borrowId, "Borrow ID");
         Borrow borrow = borrowRepository.findById(borrowId);

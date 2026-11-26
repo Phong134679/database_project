@@ -12,25 +12,25 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Repository class handling MySQL data persistence for UNIVERSITY_MEMBER subclass.
+ * Repository class handling MySQL data persistence for UNIVERSITY_MEMBER.
+ * In v2 schema, member_id is the independent PK and person_id is a UNIQUE FK to PERSON.
  */
 public class UniversityMemberRepository {
 
     /**
-     * Inserts a new UniversityMember record (assuming Person superclass record exists).
+     * Inserts a new UniversityMember record (assuming Person record exists).
      */
     public void insertMember(UniversityMember member) {
-        String sql = "INSERT INTO UNIVERSITY_MEMBER (person_id, member_id, department, member_type, major, academic_rank) " +
-                     "VALUES (?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO UNIVERSITY_MEMBER (member_id, person_id, member_type, major, academic_rank) " +
+                     "VALUES (?, ?, ?, ?, ?)";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            ps.setInt(1, member.getPersonId());
-            ps.setString(2, member.getMemberId());
-            ps.setString(3, member.getDepartment());
-            ps.setString(4, member.getMemberType());
-            ps.setString(5, member.getMajor());
-            ps.setString(6, member.getAcademicRank());
+            ps.setString(1, member.getMemberId());
+            ps.setInt(2, member.getPersonId());
+            ps.setString(3, member.getMemberType());
+            ps.setString(4, member.getMajor());
+            ps.setString(5, member.getAcademicRank());
 
             ps.executeUpdate();
         } catch (SQLException e) {
@@ -39,11 +39,11 @@ public class UniversityMemberRepository {
     }
 
     /**
-     * Finds a UniversityMember by personId joining with PERSON superclass table.
+     * Finds a UniversityMember by personId joining with PERSON.
      */
     public UniversityMember findByPersonId(int personId) {
-        String sql = "SELECT p.person_id, p.ssn, p.name, p.address, p.email, p.phone, p.person_type, " +
-                     "       m.member_id, m.department, m.member_type, m.major, m.academic_rank " +
+        String sql = "SELECT p.person_id, p.name, p.email, p.phone, " +
+                     "       m.member_id, m.member_type, m.major, m.academic_rank " +
                      "FROM UNIVERSITY_MEMBER m " +
                      "JOIN PERSON p ON m.person_id = p.person_id " +
                      "WHERE m.person_id = ?";
@@ -63,27 +63,34 @@ public class UniversityMemberRepository {
     }
 
     /**
-     * Finds a UniversityMember by internal student/faculty code (memberId).
+     * Finds a UniversityMember by memberId (e.g., 'SV2026001').
      */
-    public UniversityMember findByMemberCode(String memberCode) {
-        String sql = "SELECT p.person_id, p.ssn, p.name, p.address, p.email, p.phone, p.person_type, " +
-                     "       m.member_id, m.department, m.member_type, m.major, m.academic_rank " +
+    public UniversityMember findByMemberId(String memberId) {
+        String sql = "SELECT p.person_id, p.name, p.email, p.phone, " +
+                     "       m.member_id, m.member_type, m.major, m.academic_rank " +
                      "FROM UNIVERSITY_MEMBER m " +
                      "JOIN PERSON p ON m.person_id = p.person_id " +
                      "WHERE m.member_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            ps.setString(1, memberCode);
+            ps.setString(1, memberId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return mapRowToMember(rs);
                 }
             }
         } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi tra cứu thành viên theo mã " + memberCode + ": " + e.getMessage(), e);
+            throw new DatabaseException("Lỗi khi tra cứu thành viên theo mã " + memberId + ": " + e.getMessage(), e);
         }
         return null;
+    }
+
+    /**
+     * Alias for findByMemberId for backward compatibility.
+     */
+    public UniversityMember findByMemberCode(String memberCode) {
+        return findByMemberId(memberCode);
     }
 
     /**
@@ -91,8 +98,8 @@ public class UniversityMemberRepository {
      */
     public List<UniversityMember> findAll() {
         List<UniversityMember> list = new ArrayList<>();
-        String sql = "SELECT p.person_id, p.ssn, p.name, p.address, p.email, p.phone, p.person_type, " +
-                     "       m.member_id, m.department, m.member_type, m.major, m.academic_rank " +
+        String sql = "SELECT p.person_id, p.name, p.email, p.phone, " +
+                     "       m.member_id, m.member_type, m.major, m.academic_rank " +
                      "FROM UNIVERSITY_MEMBER m " +
                      "JOIN PERSON p ON m.person_id = p.person_id " +
                      "ORDER BY p.person_id ASC";
@@ -112,14 +119,10 @@ public class UniversityMemberRepository {
     private UniversityMember mapRowToMember(ResultSet rs) throws SQLException {
         return new UniversityMember(
                 rs.getInt("person_id"),
-                rs.getString("ssn"),
                 rs.getString("name"),
-                rs.getString("address"),
                 rs.getString("email"),
                 rs.getString("phone"),
-                rs.getString("person_type"),
                 rs.getString("member_id"),
-                rs.getString("department"),
                 rs.getString("member_type"),
                 rs.getString("major"),
                 rs.getString("academic_rank")

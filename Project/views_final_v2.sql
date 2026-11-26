@@ -263,6 +263,9 @@ LEFT JOIN (
 CREATE OR REPLACE VIEW VIEW_ACCESS_LOGS_DETAILED AS
 SELECT
     l.log_id,
+    l.person_id,
+    p.name AS person_name,
+    CASE WHEN l.person_id IS NULL THEN 'Guest' ELSE p.name END AS accessed_as,
     l.journal_resource_id,
     l.journal_resource_id AS resource_id,
     r.title AS journal_title,
@@ -271,6 +274,8 @@ SELECT
     dj.format AS journal_format,
     l.ip_address
 FROM ACCESS_LOG l
+LEFT JOIN PERSON p
+    ON p.person_id = l.person_id
 LEFT JOIN RESOURCE r
     ON r.resource_id = l.journal_resource_id
 LEFT JOIN DIGITAL_JOURNAL dj

@@ -1,7 +1,6 @@
 package com.library.service;
 
 import com.library.exception.InvalidInputException;
-import com.library.exception.LibraryException;
 import com.library.exception.ResourceNotFoundException;
 import com.library.model.AccessLog;
 import com.library.model.DigitalJournal;
@@ -23,16 +22,19 @@ import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Types;
-import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Service class implementing digital resource access control, MANUAL license grant/revoke,
- * and access logging (BR04, BR12, BR13, FR07, FR08).
+ * and access logging via v2 Stored Procedures (sp_access_digital_journal).
  *
- * Quy tắc đọc tài liệu số:
- *   ALLOW = IS_AUTHOR OR RESOURCE.is_public = TRUE OR HAS_ALL_REQUIRED_LICENSES
+ * Quy tắc truy cập (v2):
+ *   - Không nhập person_id (NULL): Guest, chỉ được phép khi RESOURCE.is_public = TRUE.
+ *   - Có person_id: Kiểm tra tồn tại PERSON; nếu là tác giả (AUTHOR_OF) bỏ qua License;
+ *     nếu không phải tác giả phải sở hữu đầy đủ toàn bộ License yêu cầu trong RESOURCE_LICENSE.
+ *   - IP giả lập được sp_access_digital_journal tự sinh khi truy cập thành công; Java không truyền IP.
  */
 public class DigitalJournalService {
 
@@ -64,65 +66,50 @@ public class DigitalJournalService {
 
     /**
      * Executes digital journal access verification and ACCESS_LOG recording
-     * via MySQL Stored Procedure sp_access_digital_journal (uses MySQL NOW()).
+     * via MySQL Stored Procedure sp_access_digital_journal(person_id, resource_id, OUT allowed, OUT reason, OUT log_id).
+     * Never accepts or passes client IP; synthetic IP is generated inside the stored procedure.
      */
-    public boolean accessDigitalJournal(Integer personId, int journalResourceId, String ipAddress) {
+    public Map<String, Object> accessDigitalJournalWithResult(Integer personId, int journalResourceId) {
         DataValidator.validatePositiveId(journalResourceId, "Journal Resource ID");
 
-        String sql = "{CALL sp_access_digital_journal(?, ?, ?, ?, ?, ?)}";
+        String sql = "{CALL sp_access_digital_journal(?, ?, ?, ?, ?)}";
         try (Connection conn = DatabaseConnection.getConnection();
              CallableStatement cs = conn.prepareCall(sql)) {
 
-            if (personId != null && personId > 0) {
+            if (personId != null) {
                 cs.setInt(1, personId);
             } else {
                 cs.setNull(1, Types.INTEGER);
             }
             cs.setInt(2, journalResourceId);
-            if (ipAddress != null) {
-                cs.setString(3, ipAddress);
-            } else {
-                cs.setNull(3, Types.VARCHAR);
-            }
-            cs.registerOutParameter(4, Types.BOOLEAN); // p_allowed
-            cs.registerOutParameter(5, Types.VARCHAR); // p_reason
-            cs.registerOutParameter(6, Types.BIGINT);  // p_log_id
+            cs.registerOutParameter(3, Types.BOOLEAN); // p_allowed
+            cs.registerOutParameter(4, Types.VARCHAR); // p_reason
+            cs.registerOutParameter(5, Types.BIGINT);  // p_log_id
             cs.execute();
 
-            boolean allowed = cs.getBoolean(4);
-            String reason = cs.getString(5);
-            long logId = cs.getLong(6);
+            boolean allowed = cs.getBoolean(3);
+            String reason = cs.getString(4);
+            long logId = cs.getLong(5);
 
             System.out.println("[DigitalJournalService] Access Log #" + logId + ": "
                     + (allowed ? "ALLOWED" : "DENIED") + " — " + reason);
 
-            if (!allowed) {
-                LibraryException mapped = SqlExceptionMapper.mapFromReason(reason);
-                if (mapped != null) {
-                    throw mapped;
-                }
-                return false;
-            }
-            return true;
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("allowed", allowed);
+            result.put("reason", reason);
+            result.put("logId", logId);
+            return result;
         } catch (SQLException e) {
             SqlExceptionMapper.throwMapped(e);
-            return false;
+            return null;
         }
     }
 
-    public boolean accessDigitalJournal(int personId, int journalResourceId, String ipAddress) {
-        return accessDigitalJournal(Integer.valueOf(personId), journalResourceId, ipAddress);
+    public boolean accessDigitalJournal(Integer personId, int journalResourceId) {
+        Map<String, Object> res = accessDigitalJournalWithResult(personId, journalResourceId);
+        return res != null && Boolean.TRUE.equals(res.get("allowed"));
     }
 
-    @Deprecated
-    public boolean accessDigitalJournal(int personId, int journalResourceId, String ipAddress, LocalDate accessDate) {
-        return accessDigitalJournal(Integer.valueOf(personId), journalResourceId, ipAddress);
-    }
-
-    /**
-     * Grants a license package to a person (MANUAL only).
-     * Prevents duplicate grant for the same (person_id, license_id).
-     */
     public GrantedLicense grantLicenseManual(int personId, int licenseId) {
         DataValidator.validatePositiveId(personId, "Person ID");
         DataValidator.validatePositiveId(licenseId, "License ID");
@@ -144,9 +131,6 @@ public class DigitalJournalService {
         return grant;
     }
 
-    /**
-     * Revokes a license package from a person by (person_id, license_id).
-     */
     public boolean revokeLicenseManual(int personId, int licenseId) {
         DataValidator.validatePositiveId(personId, "Person ID");
         DataValidator.validatePositiveId(licenseId, "License ID");
@@ -157,9 +141,6 @@ public class DigitalJournalService {
         return true;
     }
 
-    /**
-     * Revokes a license grant by grant_id.
-     */
     public boolean revokeLicenseByGrantId(int grantId) {
         DataValidator.validatePositiveId(grantId, "Grant ID");
         int deleted = grantedLicenseRepository.revokeByGrantId(grantId);
