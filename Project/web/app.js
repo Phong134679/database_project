@@ -93,44 +93,67 @@ async function checkHealth() {
 // =============================================================================
 async function loadResources() {
   const tbody = document.getElementById('resourcesBody');
-  tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Đang tải danh mục...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Đang tải danh mục...</td></tr>';
   try {
     const res = await fetch(`${API_BASE}/api/resources`);
     if (!res.ok) throw new Error("HTTP " + res.status);
     state.resources = await res.json();
-    renderResources(state.resources);
+    filterResources();
     populateJournalDropdown();
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="color: var(--danger);">Lỗi tải danh mục: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state" style="color: var(--danger);">Lỗi tải danh mục: ${err.message}</td></tr>`;
   }
 }
 
 function renderResources(list) {
   const tbody = document.getElementById('resourcesBody');
   if (!list || list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Không tìm thấy tài nguyên nào.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Không tìm thấy tài nguyên nào.</td></tr>';
     return;
   }
 
   tbody.innerHTML = list.map(r => {
-    const isBook = r.resourceType === 'PHYSICAL_BOOK';
-    const typeBadge = isBook
-      ? (r.isPublic
-          ? '<span class="badge badge-info">Sách in (Public)</span>'
-          : '<span class="badge badge-warning">Sách in (Cần License)</span>')
-      : (r.isPublic
-          ? '<span class="badge badge-success">Tạp chí số (Public)</span>'
-          : '<span class="badge badge-warning">Tạp chí số (Cần License)</span>');
+    const isBook = r.isPhysicalBook === true;
+    const isJournal = r.isDigitalJournal === true;
 
-    const extraInfo = isBook
-      ? `Kệ: ${r.shelfLocation || '-'}`
-      : `${r.format || 'PDF'} (${r.fileSize || 0} KB)`;
+    const badges = [];
+    if (isBook) {
+      badges.push(r.isPublic
+        ? '<span class="badge badge-info">Sách in (Public)</span>'
+        : '<span class="badge badge-warning">Sách in (Cần License)</span>');
+    }
+    if (isJournal) {
+      badges.push(r.isPublic
+        ? '<span class="badge badge-success">Tạp chí số (Public)</span>'
+        : '<span class="badge badge-warning">Tạp chí số (Cần License)</span>');
+    }
+    const typeBadge = badges.length > 0
+      ? badges.join(' ')
+      : '<span class="badge badge-secondary">Chưa phân loại</span>';
 
-    const actionCol = isBook
-      ? `<span class="badge ${r.availableCopies > 0 ? 'badge-success' : 'badge-danger'}">${r.availableCopies} / ${r.totalCopies} sẵn sàng</span>`
-      : (r.isPublic
+    const infos = [];
+    if (isBook) {
+      infos.push(`Kệ: ${r.shelfLocation || '-'} (Tổng: ${r.totalCopies || 0}, Sẵn sàng: ${r.availableCopies || 0})`);
+    }
+    if (isJournal) {
+      infos.push(`${r.format || 'PDF'} (${r.fileSize || 0} KB)`);
+    }
+    const extraInfo = infos.length > 0 ? infos.join('<br>') : '-';
+
+    const actions = [];
+    if (isBook) {
+      actions.push(`<span class="badge ${r.availableCopies > 0 ? 'badge-success' : 'badge-danger'}">${r.availableCopies} / ${r.totalCopies} sẵn sàng</span>`);
+    }
+    if (isJournal) {
+      if (r.url) {
+        actions.push(r.isPublic
           ? `<a href="${r.url}" target="_blank" class="btn btn-success btn-sm" style="text-decoration: none;">📖 Đọc trực tuyến</a>`
           : `<a href="${r.url}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration: none;">📖 Xem trực tuyến</a>`);
+      } else {
+        actions.push('<span class="badge badge-secondary">Chưa có URL</span>');
+      }
+    }
+    const actionCol = actions.length > 0 ? actions.join(' ') : '-';
 
     const licenseCol = r.requiredLicenseCount > 0
       ? `<span class="badge badge-warning">${r.requiredLicenseCount} gói License</span>`
@@ -155,7 +178,12 @@ function filterResources() {
   const typeFilter = document.getElementById('resourceTypeFilter').value;
 
   const filtered = state.resources.filter(r => {
-    const matchType = (typeFilter === 'ALL') || (r.resourceType === typeFilter);
+    let matchType = true;
+    if (typeFilter === 'PHYSICAL_BOOK') {
+      matchType = r.isPhysicalBook === true;
+    } else if (typeFilter === 'DIGITAL_JOURNAL') {
+      matchType = r.isDigitalJournal === true;
+    }
     const matchQuery = !query ||
       (r.title && r.title.toLowerCase().includes(query)) ||
       (r.topic && r.topic.toLowerCase().includes(query));
@@ -457,7 +485,7 @@ function populateJournalDropdown() {
   if (!select) return;
   select.innerHTML = '<option value="">-- Chọn bài báo / tạp chí số --</option>';
 
-  const journals = state.resources.filter(r => r.resourceType === 'DIGITAL_JOURNAL');
+  const journals = state.resources.filter(r => r.isDigitalJournal === true);
   journals.forEach(j => {
     const opt = document.createElement('option');
     opt.value = j.resourceId;

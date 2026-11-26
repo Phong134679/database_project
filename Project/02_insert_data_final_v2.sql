@@ -64,12 +64,13 @@ INSERT INTO PHYSICAL_BOOK (resource_id, shelf_location) VALUES
     (8, 'Kệ A2-08-04');
 
 INSERT INTO DIGITAL_JOURNAL (resource_id, url, file_size, format) VALUES
-    (3,  'https://dl.library.edu/journals/deep-learning-2025.pdf',       4096, 'PDF'),
-    (4,  'https://dl.library.edu/journals/acm-distributed-tx.pdf',       2048, 'PDF'),
-    (5,  'https://dl.library.edu/journals/clean-architecture-2024.pdf',  5120, 'PDF'),
-    (6,  'https://dl.library.edu/journals/cloud-db-scaling-2025.pdf',    3584, 'PDF'),
-    (9,  'https://dl.library.edu/journals/practical-ml-systems.pdf',     6144, 'PDF'),
-    (10, 'https://dl.library.edu/journals/open-research-data.pdf',       3072, 'PDF');
+    (3,  'https://dl.library.edu/journals/deep-learning-2025.pdf',          4096, 'PDF'),
+    (4,  'https://dl.library.edu/journals/acm-distributed-tx.pdf',          2048, 'PDF'),
+    (5,  'https://dl.library.edu/journals/clean-architecture-2024.pdf',     5120, 'PDF'),
+    (6,  'https://dl.library.edu/journals/cloud-db-scaling-2025.pdf',       3584, 'PDF'),
+    (7,  'https://dl.library.edu/journals/csdl-nang-cao-he-phan-tan.pdf',   4608, 'PDF'),
+    (9,  'https://dl.library.edu/journals/practical-ml-systems.pdf',        6144, 'PDF'),
+    (10, 'https://dl.library.edu/journals/open-research-data.pdf',          3072, 'PDF');
 
 -- =============================================================================
 -- 5. BOOK_COPY

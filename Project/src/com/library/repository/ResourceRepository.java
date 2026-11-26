@@ -76,22 +76,34 @@ public class ResourceRepository {
 
             while (rs.next()) {
                 Map<String, Object> map = new LinkedHashMap<>();
-                boolean isBook = rs.getBoolean("is_physical_book");
-                boolean isJournal = rs.getBoolean("is_digital_journal");
-                String type = isBook ? "PHYSICAL_BOOK" : (isJournal ? "DIGITAL_JOURNAL" : "UNKNOWN");
+                boolean isPhysicalBook = rs.getBoolean("is_physical_book");
+                boolean isDigitalJournal = rs.getBoolean("is_digital_journal");
+                String type;
+                if (isPhysicalBook && isDigitalJournal) {
+                    type = "BOTH";
+                } else if (isPhysicalBook) {
+                    type = "PHYSICAL_BOOK";
+                } else if (isDigitalJournal) {
+                    type = "DIGITAL_JOURNAL";
+                } else {
+                    type = "UNKNOWN";
+                }
 
                 map.put("resourceId", rs.getInt("resource_id"));
                 map.put("title", rs.getString("title"));
                 map.put("topic", rs.getString("topic"));
+                map.put("isPhysicalBook", isPhysicalBook);
+                map.put("isDigitalJournal", isDigitalJournal);
                 map.put("resourceType", type);
                 map.put("isPublic", rs.getBoolean("is_public"));
                 map.put("requiredLicenseCount", rs.getInt("required_license_count"));
 
-                if (isBook) {
+                if (isPhysicalBook) {
                     map.put("shelfLocation", rs.getString("shelf_location"));
                     map.put("totalCopies", rs.getInt("total_copies"));
                     map.put("availableCopies", rs.getInt("available_copies"));
-                } else if (isJournal) {
+                }
+                if (isDigitalJournal) {
                     map.put("url", rs.getString("journal_url"));
                     map.put("fileSize", rs.getInt("file_size"));
                     map.put("format", rs.getString("journal_format"));
