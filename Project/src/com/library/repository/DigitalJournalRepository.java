@@ -12,16 +12,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Repository class handling MySQL data persistence for DIGITAL_JOURNAL subtype.
+ * Repository class handling MySQL data queries for DIGITAL_JOURNAL via VIEW_JOURNALS_DETAILED.
  */
 public class DigitalJournalRepository {
 
     public DigitalJournal findById(int resourceId) {
-        String sql = "SELECT r.resource_id, r.title, r.topic, r.is_public, " +
-                     "       dj.url, dj.file_size, dj.format " +
-                     "FROM DIGITAL_JOURNAL dj " +
-                     "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
-                     "WHERE dj.resource_id = ?";
+        String sql = "SELECT resource_id, title, topic, is_public, url, file_size, format " +
+                     "FROM VIEW_JOURNALS_DETAILED WHERE resource_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -59,11 +56,8 @@ public class DigitalJournalRepository {
 
     public List<DigitalJournal> findAll() {
         List<DigitalJournal> list = new ArrayList<>();
-        String sql = "SELECT r.resource_id, r.title, r.topic, r.is_public, " +
-                     "       dj.url, dj.file_size, dj.format " +
-                     "FROM DIGITAL_JOURNAL dj " +
-                     "JOIN RESOURCE r ON dj.resource_id = r.resource_id " +
-                     "ORDER BY r.resource_id ASC";
+        String sql = "SELECT resource_id, title, topic, is_public, url, file_size, format " +
+                     "FROM VIEW_JOURNALS_DETAILED ORDER BY resource_id ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {

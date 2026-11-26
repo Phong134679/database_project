@@ -8,21 +8,16 @@ import com.library.repository.FineRepository;
 import com.library.repository.PersonRepository;
 import com.library.repository.UniversityMemberRepository;
 import com.library.validation.DataValidator;
-import com.library.validation.MemberValidator;
 
 import java.util.List;
 import java.util.Map;
 
 /**
- * Service class managing user identities, membership verification,
- * borrowing eligibility checks (BR01, BR05).
+ * Service class coordinating user identity and university member queries.
+ * Eligibility, quota, and loan duration rules are enforced in MySQL
+ * (VIEW_MEMBERS_DETAILED and sp_borrow_book).
  */
 public class MemberService {
-
-    public static final int STUDENT_MAX_QUOTA = MemberValidator.STUDENT_MAX_QUOTA;
-    public static final int FACULTY_MAX_QUOTA = MemberValidator.FACULTY_MAX_QUOTA;
-    public static final int STUDENT_LOAN_DAYS = 14;
-    public static final int FACULTY_LOAN_DAYS = 30;
 
     private PersonRepository personRepository;
     private UniversityMemberRepository memberRepository;
@@ -44,42 +39,6 @@ public class MemberService {
         this.memberRepository = memberRepository;
         this.borrowRepository = borrowRepository;
         this.fineRepository = fineRepository;
-    }
-
-    /**
-     * Checks if a university member is eligible to borrow physical books (BR01, BR05).
-     */
-    public boolean isEligibleToBorrow(String memberId) {
-        DataValidator.validateNonEmptyString(memberId, "Member ID");
-
-        UniversityMember member = memberRepository.findByMemberId(memberId);
-        if (member == null) {
-            throw new ResourceNotFoundException("Thành viên đại học (UniversityMember) với mã " + memberId, 0);
-        }
-
-        boolean hasOverdue = borrowRepository.hasOverdueBorrows(memberId);
-        boolean hasFines = fineRepository.hasUnpaidFinesByMember(memberId);
-        int activeBorrows = borrowRepository.countActiveBorrowsByMember(memberId);
-
-        MemberValidator.validateBorrowEligibility(member, hasOverdue, hasFines, activeBorrows);
-        return true;
-    }
-
-    /**
-     * Determines loan duration in days according to member_type (BR05).
-     * FACULTY: 30 days, STUDENT: 14 days.
-     */
-    public int getLoanDurationDays(String memberId) {
-        DataValidator.validateNonEmptyString(memberId, "Member ID");
-        UniversityMember member = memberRepository.findByMemberId(memberId);
-        if (member == null) {
-            throw new ResourceNotFoundException("Thành viên đại học (UniversityMember) với mã " + memberId, 0);
-        }
-
-        if ("FACULTY".equalsIgnoreCase(member.getMemberType())) {
-            return FACULTY_LOAN_DAYS;
-        }
-        return STUDENT_LOAN_DAYS;
     }
 
     public UniversityMember getMemberProfile(int personId) {

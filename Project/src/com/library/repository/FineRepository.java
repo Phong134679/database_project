@@ -8,7 +8,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -16,39 +15,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Repository class handling MySQL data persistence for FINE entity.
- * Supports multiple Fine rows per borrow_id in v2 schema.
+ * Repository class handling read-only MySQL data queries for FINE entity.
+ * Fine creation and payment confirmation are delegated to MySQL Stored Procedures
+ * (sp_return_book, sp_confirm_fine_payment).
  */
 public class FineRepository {
-
-    public void insertFine(Connection conn, Fine fine) {
-        String sql = "INSERT INTO FINE (borrow_id, total_fine_amount, payment_status) " +
-                     "VALUES (?, ?, ?)";
-        try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setInt(1, fine.getBorrowId());
-            ps.setBigDecimal(2, fine.getTotalFineAmount());
-            ps.setString(3, fine.getPaymentStatus() != null ? fine.getPaymentStatus() : "Unpaid");
-
-            int affectedRows = ps.executeUpdate();
-            if (affectedRows > 0) {
-                try (ResultSet generatedKeys = ps.getGeneratedKeys()) {
-                    if (generatedKeys.next()) {
-                        fine.setFineId(generatedKeys.getInt(1));
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi thêm phiếu phạt (insertFine): " + e.getMessage(), e);
-        }
-    }
-
-    public void insertFine(Fine fine) {
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            insertFine(conn, fine);
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi kết nối khi thêm phiếu phạt: " + e.getMessage(), e);
-        }
-    }
 
     public Fine findById(Connection conn, int fineId) {
         String sql = "SELECT fine_id, borrow_id, total_fine_amount, payment_status " +
@@ -136,42 +107,6 @@ public class FineRepository {
         return list;
     }
 
-    public void updateFine(Fine fine) {
-        String sql = "UPDATE FINE SET borrow_id = ?, total_fine_amount = ?, " +
-                     "payment_status = ? WHERE fine_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setInt(1, fine.getBorrowId());
-            ps.setBigDecimal(2, fine.getTotalFineAmount());
-            ps.setString(3, fine.getPaymentStatus());
-            ps.setInt(4, fine.getFineId());
-
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi cập nhật phiếu phạt ID " + fine.getFineId() + ": " + e.getMessage(), e);
-        }
-    }
-
-    public void updatePaymentStatus(Connection conn, int fineId, String paymentStatus) {
-        String sql = "UPDATE FINE SET payment_status = ? WHERE fine_id = ?";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, paymentStatus);
-            ps.setInt(2, fineId);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi cập nhật trạng thái phiếu phạt ID " + fineId + ": " + e.getMessage(), e);
-        }
-    }
-
-    public void updatePaymentStatus(int fineId, String paymentStatus) {
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            updatePaymentStatus(conn, fineId, paymentStatus);
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi kết nối khi cập nhật trạng thái phiếu phạt: " + e.getMessage(), e);
-        }
-    }
-
     /**
      * Retrieves all fines with detailed member and borrow info from VIEW_FINES_DETAILED.
      */
@@ -207,40 +142,6 @@ public class FineRepository {
             throw new DatabaseException("Lỗi khi tra cứu danh sách phiếu phạt chi tiết: " + e.getMessage(), e);
         }
         return list;
-    }
-
-    public void deleteFine(int fineId) {
-        String sql = "DELETE FROM FINE WHERE fine_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setInt(1, fineId);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi xóa phiếu phạt ID " + fineId + ": " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Checks if a member has any unpaid fines (status = 'Unpaid').
-     */
-    public boolean hasUnpaidFinesByMember(String memberId) {
-        String sql = "SELECT COUNT(*) AS unpaid_count FROM FINE f " +
-                     "JOIN BORROW b ON f.borrow_id = b.borrow_id " +
-                     "WHERE b.member_id = ? AND f.payment_status = 'Unpaid'";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, memberId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt("unpaid_count") > 0;
-                }
-            }
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi kiểm tra nợ phạt của thành viên " + memberId + ": " + e.getMessage(), e);
-        }
-        return false;
     }
 
     private Fine mapRowToFine(ResultSet rs) throws SQLException {

@@ -27,14 +27,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Service class implementing digital resource access control, MANUAL license grant/revoke,
- * and access logging via v2 Stored Procedures (sp_access_digital_journal).
- *
- * Quy tắc truy cập (v2):
- *   - Không nhập person_id (NULL): Guest, chỉ được phép khi RESOURCE.is_public = TRUE.
- *   - Có person_id: Kiểm tra tồn tại PERSON; nếu là tác giả (AUTHOR_OF) bỏ qua License;
- *     nếu không phải tác giả phải sở hữu đầy đủ toàn bộ License yêu cầu trong RESOURCE_LICENSE.
- *   - IP giả lập được sp_access_digital_journal tự sinh khi truy cập thành công; Java không truyền IP.
+ * Service class coordinating digital resource access, manual license grant/revoke,
+ * and access log retrieval via MySQL Stored Procedures:
+ * sp_access_digital_journal, sp_grant_license_manual, sp_revoke_license_manual.
  */
 public class DigitalJournalService {
 
@@ -66,8 +61,7 @@ public class DigitalJournalService {
 
     /**
      * Executes digital journal access verification and ACCESS_LOG recording
-     * via MySQL Stored Procedure sp_access_digital_journal(person_id, resource_id, OUT allowed, OUT reason, OUT log_id).
-     * Never accepts or passes client IP; synthetic IP is generated inside the stored procedure.
+     * via sp_access_digital_journal(p_person_id, p_resource_id, OUT p_allowed, OUT p_reason, OUT p_log_id).
      */
     public Map<String, Object> accessDigitalJournalWithResult(Integer personId, int journalResourceId) {
         DataValidator.validatePositiveId(journalResourceId, "Journal Resource ID");
@@ -82,9 +76,9 @@ public class DigitalJournalService {
                 cs.setNull(1, Types.INTEGER);
             }
             cs.setInt(2, journalResourceId);
-            cs.registerOutParameter(3, Types.BOOLEAN); // p_allowed
-            cs.registerOutParameter(4, Types.VARCHAR); // p_reason
-            cs.registerOutParameter(5, Types.BIGINT);  // p_log_id
+            cs.registerOutParameter(3, Types.BOOLEAN);
+            cs.registerOutParameter(4, Types.VARCHAR);
+            cs.registerOutParameter(5, Types.BIGINT);
             cs.execute();
 
             boolean allowed = cs.getBoolean(3);
@@ -110,6 +104,9 @@ public class DigitalJournalService {
         return res != null && Boolean.TRUE.equals(res.get("allowed"));
     }
 
+    /**
+     * Grants a license package to a person via sp_grant_license_manual(p_person_id, p_license_id, OUT p_grant_id).
+     */
     public GrantedLicense grantLicenseManual(int personId, int licenseId) {
         DataValidator.validatePositiveId(personId, "Person ID");
         DataValidator.validatePositiveId(licenseId, "License ID");
@@ -120,34 +117,64 @@ public class DigitalJournalService {
         LicensePackage lp = licensePackageRepository.findById(licenseId);
         LicenseValidator.validateLicensePackageExists(lp, licenseId);
 
-        if (grantedLicenseRepository.existsGrant(personId, licenseId)) {
-            throw new InvalidInputException(
-                    "Người dùng [" + person.getName() + "] đã sở hữu gói bản quyền [" + lp.getLicenseName() + "] (Không thể cấp trùng)."
-            );
-        }
+        String sql = "{CALL sp_grant_license_manual(?, ?, ?)}";
+        try (Connection conn = DatabaseConnection.getConnection();
+             CallableStatement cs = conn.prepareCall(sql)) {
 
-        GrantedLicense grant = new GrantedLicense(0, personId, licenseId);
-        grantedLicenseRepository.insertGrant(grant);
-        return grant;
+            cs.setInt(1, personId);
+            cs.setInt(2, licenseId);
+            cs.registerOutParameter(3, Types.INTEGER);
+            cs.execute();
+
+            int grantId = cs.getInt(3);
+            return new GrantedLicense(grantId, personId, licenseId);
+        } catch (SQLException e) {
+            if ("45000".equals(e.getSQLState()) || e.getErrorCode() == 1644) {
+                throw new InvalidInputException(e.getMessage());
+            }
+            SqlExceptionMapper.throwMapped(e);
+            return null;
+        }
     }
 
+    /**
+     * Revokes a license package from a person via sp_revoke_license_manual(p_person_id, p_license_id, OUT p_deleted).
+     */
     public boolean revokeLicenseManual(int personId, int licenseId) {
         DataValidator.validatePositiveId(personId, "Person ID");
         DataValidator.validatePositiveId(licenseId, "License ID");
-        int deleted = grantedLicenseRepository.revokeGrant(personId, licenseId);
-        if (deleted == 0) {
-            throw new ResourceNotFoundException("Quyền cấp License (Person=" + personId + ", License=" + licenseId + ")", personId);
+
+        String sql = "{CALL sp_revoke_license_manual(?, ?, ?)}";
+        try (Connection conn = DatabaseConnection.getConnection();
+             CallableStatement cs = conn.prepareCall(sql)) {
+
+            cs.setInt(1, personId);
+            cs.setInt(2, licenseId);
+            cs.registerOutParameter(3, Types.INTEGER);
+            cs.execute();
+
+            int deleted = cs.getInt(3);
+            if (deleted == 0) {
+                throw new ResourceNotFoundException("Quyền cấp License (Person=" + personId + ", License=" + licenseId + ")", personId);
+            }
+            return true;
+        } catch (SQLException e) {
+            SqlExceptionMapper.throwMapped(e);
+            return false;
         }
-        return true;
     }
 
+    /**
+     * Revokes a license grant by grant_id while preserving API contract:
+     * resolves (person_id, license_id) and delegates deletion to sp_revoke_license_manual.
+     */
     public boolean revokeLicenseByGrantId(int grantId) {
         DataValidator.validatePositiveId(grantId, "Grant ID");
-        int deleted = grantedLicenseRepository.revokeByGrantId(grantId);
-        if (deleted == 0) {
+        GrantedLicense existing = grantedLicenseRepository.findById(grantId);
+        if (existing == null) {
             throw new ResourceNotFoundException("Bản ghi cấp License (GRANTED_LICENSE)", grantId);
         }
-        return true;
+        return revokeLicenseManual(existing.getPersonId(), existing.getLicenseId());
     }
 
     public List<LicensePackage> getAllLicensePackages() {

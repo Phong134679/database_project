@@ -8,44 +8,16 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
-import java.sql.Types;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Repository class handling MySQL data persistence for ACCESS_LOG entity.
- * In v2 schema, ACCESS_LOG stores log_id, nullable person_id, journal_resource_id, and synthetic ip_address.
+ * Repository class handling read-only MySQL data queries for ACCESS_LOG.
+ * Access log insertion is exclusively handled by Stored Procedure sp_access_digital_journal.
  */
 public class AccessLogRepository {
-
-    public void insertLog(AccessLog log) {
-        String sql = "INSERT INTO ACCESS_LOG (person_id, journal_resource_id, ip_address) VALUES (?, ?, ?)";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-
-            if (log.getPersonId() != null) {
-                ps.setInt(1, log.getPersonId());
-            } else {
-                ps.setNull(1, Types.INTEGER);
-            }
-            ps.setInt(2, log.getJournalResourceId());
-            ps.setString(3, log.getIpAddress());
-
-            int affectedRows = ps.executeUpdate();
-            if (affectedRows > 0) {
-                try (ResultSet generatedKeys = ps.getGeneratedKeys()) {
-                    if (generatedKeys.next()) {
-                        log.setLogId(generatedKeys.getLong(1));
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi ghi nhật ký truy cập (insertLog): " + e.getMessage(), e);
-        }
-    }
 
     public AccessLog findById(long logId) {
         String sql = "SELECT log_id, person_id, journal_resource_id, ip_address FROM ACCESS_LOG WHERE log_id = ?";

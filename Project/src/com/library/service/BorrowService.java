@@ -20,13 +20,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Service class implementing business logic operations for borrow transactions.
- * Delegates atomic borrow/return checks and updates to MySQL Stored Procedures
- * sp_borrow_book and sp_return_book (v2 schema: VARCHAR member_id & copy_id).
+ * Service class coordinating borrow/return operations.
+ * All business rules (eligibility, quota, overdue, fine, copy status) are enforced
+ * by MySQL Stored Procedures sp_borrow_book and sp_return_book.
  */
 public class BorrowService {
-
-    public static final double OVERDUE_PENALTY_PER_BORROW = 50000.0;
 
     private BorrowRepository borrowRepository;
     private FineRepository fineRepository;
@@ -96,9 +94,6 @@ public class BorrowService {
         return true;
     }
 
-    /**
-     * Processes book return using MySQL server CURDATE() when returnDate is null.
-     */
     public boolean returnBook(int borrowId) {
         return returnBook(borrowId, null);
     }
@@ -152,29 +147,6 @@ public class BorrowService {
 
     public List<Map<String, Object>> getAllCopiesDetailed() {
         return borrowRepository.findAllCopiesDetailed();
-    }
-
-    public double calculateLatePenalty(int borrowId) {
-        DataValidator.validatePositiveId(borrowId, "Borrow ID");
-        Borrow borrow = borrowRepository.findById(borrowId);
-        BorrowValidator.validateBorrowExists(borrow, borrowId);
-
-        if (borrow.getDueDate() == null) {
-            return 0.0;
-        }
-
-        LocalDate effectiveReturnDate = borrow.getReturnDate() != null ? borrow.getReturnDate() : LocalDate.now();
-        if (effectiveReturnDate.isAfter(borrow.getDueDate())) {
-            return OVERDUE_PENALTY_PER_BORROW;
-        }
-
-        return 0.0;
-    }
-
-    public double calculateMemberOverduePenalty(String memberId) {
-        DataValidator.validateNonEmptyString(memberId, "Member ID");
-        int overdueCount = borrowRepository.countOverdueBorrowsByMember(memberId);
-        return overdueCount * OVERDUE_PENALTY_PER_BORROW;
     }
 
     public List<Borrow> getOverdueBorrows() {

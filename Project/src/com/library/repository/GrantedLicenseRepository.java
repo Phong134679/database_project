@@ -8,77 +8,17 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Repository class handling MySQL data persistence for GRANTED_LICENSE entity.
+ * Repository class handling read-only MySQL data queries for GRANTED_LICENSE.
+ * Grant and revoke operations are delegated to MySQL Stored Procedures
+ * (sp_grant_license_manual, sp_revoke_license_manual).
  */
 public class GrantedLicenseRepository {
-
-    public boolean existsGrant(int personId, int licenseId) {
-        String sql = "SELECT COUNT(*) FROM GRANTED_LICENSE WHERE person_id = ? AND license_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, personId);
-            ps.setInt(2, licenseId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt(1) > 0;
-                }
-            }
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi kiểm tra trùng lặp License: " + e.getMessage(), e);
-        }
-        return false;
-    }
-
-    public void insertGrant(GrantedLicense grant) {
-        String sql = "INSERT INTO GRANTED_LICENSE (person_id, license_id) VALUES (?, ?)";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-
-            ps.setInt(1, grant.getPersonId());
-            ps.setInt(2, grant.getLicenseId());
-
-            int affectedRows = ps.executeUpdate();
-            if (affectedRows > 0) {
-                try (ResultSet generatedKeys = ps.getGeneratedKeys()) {
-                    if (generatedKeys.next()) {
-                        grant.setGrantId(generatedKeys.getInt(1));
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi cấp phép bản quyền (insertGrant): " + e.getMessage(), e);
-        }
-    }
-
-    public int revokeGrant(int personId, int licenseId) {
-        String sql = "DELETE FROM GRANTED_LICENSE WHERE person_id = ? AND license_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, personId);
-            ps.setInt(2, licenseId);
-            return ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi thu hồi License: " + e.getMessage(), e);
-        }
-    }
-
-    public int revokeByGrantId(int grantId) {
-        String sql = "DELETE FROM GRANTED_LICENSE WHERE grant_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, grantId);
-            return ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi thu hồi License ID " + grantId + ": " + e.getMessage(), e);
-        }
-    }
 
     public GrantedLicense findById(int grantId) {
         String sql = "SELECT grant_id, person_id, license_id FROM GRANTED_LICENSE WHERE grant_id = ?";
