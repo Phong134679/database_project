@@ -8,16 +8,37 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Repository class handling read-only MySQL data queries for ACCESS_LOG.
- * Access log insertion is exclusively handled by Stored Procedure sp_access_digital_journal.
+ * Repository class handling MySQL data persistence and queries for ACCESS_LOG via direct JDBC.
  */
 public class AccessLogRepository {
+
+    public long insertAccessLog(Connection conn, Integer personId, int journalResourceId, String ipAddress) throws SQLException {
+        String sql = "INSERT INTO ACCESS_LOG (person_id, journal_resource_id, ip_address) VALUES (?, ?, ?)";
+        try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            if (personId != null) {
+                ps.setInt(1, personId);
+            } else {
+                ps.setNull(1, Types.INTEGER);
+            }
+            ps.setInt(2, journalResourceId);
+            ps.setString(3, ipAddress);
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (keys.next()) {
+                    return keys.getLong(1);
+                }
+            }
+        }
+        throw new SQLException("Không thể lấy log_id sau khi INSERT ACCESS_LOG.");
+    }
 
     public AccessLog findById(long logId) {
         String sql = "SELECT log_id, person_id, journal_resource_id, ip_address FROM ACCESS_LOG WHERE log_id = ?";
@@ -91,14 +112,19 @@ public class AccessLogRepository {
     }
 
     /**
-     * Retrieves all access logs with person/guest & journal details from VIEW_ACCESS_LOGS_DETAILED.
+     * Retrieves all access logs with person and journal details directly from base tables
+     * without using VIEW_ACCESS_LOGS_DETAILED.
      */
-    public List<Map<String, Object>> findAllDetailed() {
+    public List<Map<String, Object>> findAllDetailedRaw() {
         List<Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT log_id, person_id, person_name, accessed_as, " +
-                     "       journal_resource_id, journal_title, is_public, journal_url, journal_format, ip_address " +
-                     "FROM VIEW_ACCESS_LOGS_DETAILED " +
-                     "ORDER BY log_id DESC";
+        String sql = "SELECT l.log_id, l.person_id, p.name AS person_name, " +
+                     "       l.journal_resource_id, r.title AS journal_title, r.is_public, " +
+                     "       dj.url AS journal_url, dj.format AS journal_format, l.ip_address " +
+                     "FROM ACCESS_LOG l " +
+                     "LEFT JOIN PERSON p ON p.person_id = l.person_id " +
+                     "LEFT JOIN RESOURCE r ON r.resource_id = l.journal_resource_id " +
+                     "LEFT JOIN DIGITAL_JOURNAL dj ON dj.resource_id = l.journal_resource_id " +
+                     "ORDER BY l.log_id DESC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
@@ -109,7 +135,6 @@ public class AccessLogRepository {
                 map.put("logId", rs.getLong("log_id"));
                 map.put("personId", pId);
                 map.put("personName", rs.getString("person_name"));
-                map.put("accessedAs", rs.getString("accessed_as"));
                 map.put("journalResourceId", rs.getInt("journal_resource_id"));
                 map.put("journalTitle", rs.getString("journal_title"));
                 map.put("isPublic", rs.getBoolean("is_public"));

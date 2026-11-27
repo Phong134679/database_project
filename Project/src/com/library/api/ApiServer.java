@@ -10,6 +10,7 @@ import com.library.service.BorrowService;
 import com.library.service.DigitalJournalService;
 import com.library.service.FineService;
 import com.library.service.MemberService;
+import com.library.service.ResourceService;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -42,17 +43,7 @@ public class ApiServer {
     private final int port;
     private HttpServer server;
 
-    private final ResourceRepository resourceRepo;
-    private final PersonRepository personRepo;
-    private final UniversityMemberRepository memberRepo;
-    private final BorrowRepository borrowRepo;
-    private final FineRepository fineRepo;
-    private final PaymentTransactionRepository paymentRepo;
-    private final DigitalJournalRepository journalRepo;
-    private final LicensePackageRepository licenseRepo;
-    private final GrantedLicenseRepository grantedLicenseRepo;
-    private final AccessLogRepository accessLogRepo;
-
+    private final ResourceService resourceService;
     private final MemberService memberService;
     private final BorrowService borrowService;
     private final FineService fineService;
@@ -62,22 +53,23 @@ public class ApiServer {
         this.port = port;
 
         // Repositories
-        this.resourceRepo = new ResourceRepository();
-        this.personRepo = new PersonRepository();
-        this.memberRepo = new UniversityMemberRepository();
-        this.borrowRepo = new BorrowRepository();
-        this.fineRepo = new FineRepository();
-        this.paymentRepo = new PaymentTransactionRepository();
-        this.journalRepo = new DigitalJournalRepository();
-        this.licenseRepo = new LicensePackageRepository();
-        this.grantedLicenseRepo = new GrantedLicenseRepository();
-        this.accessLogRepo = new AccessLogRepository();
+        ResourceRepository resourceRepo = new ResourceRepository();
+        PersonRepository personRepo = new PersonRepository();
+        UniversityMemberRepository memberRepo = new UniversityMemberRepository();
+        BorrowRepository borrowRepo = new BorrowRepository();
+        FineRepository fineRepo = new FineRepository();
+        PaymentTransactionRepository paymentRepo = new PaymentTransactionRepository();
+        DigitalJournalRepository journalRepo = new DigitalJournalRepository();
+        LicensePackageRepository licenseRepo = new LicensePackageRepository();
+        GrantedLicenseRepository grantedLicenseRepo = new GrantedLicenseRepository();
+        AccessLogRepository accessLogRepo = new AccessLogRepository();
 
         // Services
+        this.resourceService = new ResourceService(resourceRepo, grantedLicenseRepo);
         this.memberService = new MemberService(personRepo, memberRepo, borrowRepo, fineRepo);
-        this.borrowService = new BorrowService(borrowRepo, fineRepo, memberService);
+        this.borrowService = new BorrowService(borrowRepo, fineRepo, memberRepo, resourceRepo, grantedLicenseRepo, memberService, resourceService);
         this.fineService = new FineService(fineRepo, paymentRepo);
-        this.journalService = new DigitalJournalService(journalRepo, licenseRepo, grantedLicenseRepo, accessLogRepo, personRepo);
+        this.journalService = new DigitalJournalService(journalRepo, licenseRepo, grantedLicenseRepo, accessLogRepo, personRepo, resourceRepo, resourceService);
     }
 
     public void start() throws IOException {
@@ -158,7 +150,7 @@ public class ApiServer {
             }
 
             try {
-                List<Map<String, Object>> resources = resourceRepo.findAllResourcesDetailed();
+                List<Map<String, Object>> resources = resourceService.getAllResourcesDetailed();
                 HttpUtils.sendJson(exchange, 200, resources);
             } catch (Exception e) {
                 HttpUtils.handleException(exchange, e);
@@ -184,7 +176,7 @@ public class ApiServer {
             }
 
             try {
-                List<Map<String, Object>> copies = borrowRepo.findAllCopiesDetailed();
+                List<Map<String, Object>> copies = borrowService.getAllCopiesDetailed();
                 HttpUtils.sendJson(exchange, 200, copies);
             } catch (Exception e) {
                 HttpUtils.handleException(exchange, e);
@@ -498,7 +490,7 @@ public class ApiServer {
                 long logId = ((Number) accessResult.get("logId")).longValue();
 
                 if (allowed) {
-                    boolean isAuthor = personId != null && personId > 0 && journalRepo.isAuthorOfResource(personId, journalId);
+                    boolean isAuthor = personId != null && personId > 0 && journalService.isAuthorOfResource(personId, journalId);
                     Map<String, Object> res = new LinkedHashMap<>();
                     res.put("accessGranted", true);
                     res.put("logId", logId);

@@ -5,7 +5,6 @@ import com.library.model.Fine;
 
 /**
  * Validator for fine entity existence checks.
- * Payment status and settlement rules are enforced by MySQL (sp_confirm_fine_payment).
  */
 public final class FineValidator {
 

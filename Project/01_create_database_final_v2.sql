@@ -10,18 +10,6 @@ CREATE DATABASE IF NOT EXISTS library_db
 
 USE library_db;
 
--- Drop views/functions before rebuilding their base tables.
-DROP VIEW IF EXISTS VIEW_AUTHOR_IDENTIFIER;
-DROP VIEW IF EXISTS VIEW_MEMBERS_DETAILED;
-DROP VIEW IF EXISTS VIEW_RESOURCES_DETAILED;
-DROP VIEW IF EXISTS VIEW_BOOKS_DETAILED;
-DROP VIEW IF EXISTS VIEW_JOURNALS_DETAILED;
-DROP VIEW IF EXISTS VIEW_BORROWS_DETAILED;
-DROP VIEW IF EXISTS VIEW_FINES_DETAILED;
-DROP VIEW IF EXISTS VIEW_ACCESS_LOGS_DETAILED;
-DROP VIEW IF EXISTS VIEW_GRANTED_LICENSES_DETAILED;
-DROP FUNCTION IF EXISTS fn_has_all_required_licenses;
-
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS ACCESS_LOG;
 DROP TABLE IF EXISTS AUTHOR_OF;
@@ -234,68 +222,3 @@ CREATE TABLE ACCESS_LOG (
     INDEX idx_access_log_person (person_id),
     INDEX idx_access_log_journal (journal_resource_id)
 ) ENGINE = InnoDB;
-
--- =============================================================================
--- 7. HELPER FUNCTION: every required license must be granted to the PERSON.
--- A private resource with no required-license rows is deliberately not covered
--- by this function; callers must decide that case explicitly.
--- =============================================================================
-DELIMITER //
-CREATE FUNCTION fn_has_all_required_licenses(
-    p_person_id INT,
-    p_resource_id INT
-)
-RETURNS BOOLEAN
-READS SQL DATA
-BEGIN
-    DECLARE v_required_count INT DEFAULT 0;
-    DECLARE v_granted_count INT DEFAULT 0;
-
-    SELECT COUNT(*)
-      INTO v_required_count
-    FROM RESOURCE_LICENSE
-    WHERE resource_id = p_resource_id;
-
-    IF v_required_count = 0 THEN
-        RETURN FALSE;
-    END IF;
-
-    SELECT COUNT(DISTINCT rl.license_id)
-      INTO v_granted_count
-    FROM RESOURCE_LICENSE rl
-    INNER JOIN GRANTED_LICENSE gl
-        ON gl.license_id = rl.license_id
-       AND gl.person_id = p_person_id
-    WHERE rl.resource_id = p_resource_id;
-
-    RETURN v_granted_count = v_required_count;
-END//
-DELIMITER ;
-
--- =============================================================================
--- 8. AUTHOR IDENTIFIER VIEW
--- Affiliation is derived from UNIVERSITY_MEMBER; all other PERSONs are nonmembers.
--- Authorship itself is determined only by AUTHOR_OF.
--- =============================================================================
-CREATE OR REPLACE VIEW VIEW_AUTHOR_IDENTIFIER AS
-SELECT
-    p.person_id,
-    p.name,
-    p.email,
-    um.member_id,
-    um.member_type,
-    CASE
-        WHEN um.member_id IS NOT NULL THEN 'UNIVERSITY_MEMBER'
-        ELSE 'NON_MEMBER'
-    END AS affiliation_type,
-    um.major,
-    um.academic_rank,
-    COUNT(DISTINCT ao.resource_id) AS total_published_resources
-FROM PERSON p
-INNER JOIN AUTHOR_OF ao
-    ON ao.person_id = p.person_id
-LEFT JOIN UNIVERSITY_MEMBER um
-    ON um.person_id = p.person_id
-GROUP BY
-    p.person_id, p.name, p.email, um.member_id, um.member_type,
-    um.major, um.academic_rank;

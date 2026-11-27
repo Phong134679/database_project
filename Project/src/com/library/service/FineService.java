@@ -1,25 +1,20 @@
 package com.library.service;
 
+import com.library.exception.FineAlreadySettledException;
+import com.library.exception.ResourceNotFoundException;
 import com.library.model.Fine;
 import com.library.model.PaymentTransaction;
 import com.library.repository.FineRepository;
 import com.library.repository.PaymentTransactionRepository;
-import com.library.util.DatabaseConnection;
-import com.library.util.SqlExceptionMapper;
+import com.library.util.TransactionManager;
 import com.library.validation.DataValidator;
 import com.library.validation.FineValidator;
 
-import java.sql.CallableStatement;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Types;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Service class coordinating Fine queries and payment confirmation.
- * Fine creation is handled by sp_return_book; payment confirmation is handled
- * by sp_confirm_fine_payment.
+ * Service class coordinating Fine queries and payment confirmation via JDBC transactions.
  */
 public class FineService {
 
@@ -37,28 +32,29 @@ public class FineService {
     }
 
     /**
-     * Confirms that a fine has been fully settled by delegating validation and atomic
-     * transaction recording + status update to MySQL Stored Procedure sp_confirm_fine_payment.
+     * Confirms that a fine has been fully settled within an atomic JDBC transaction:
+     * locks the FINE row (FOR UPDATE), validates status != Completed, inserts PAYMENT_TRANSACTION,
+     * and updates FINE.payment_status to 'Completed'.
      */
     public boolean confirmPayment(int fineId) {
         DataValidator.validatePositiveId(fineId, "Fine ID");
 
-        String sql = "{CALL sp_confirm_fine_payment(?, ?)}";
-        try (Connection conn = DatabaseConnection.getConnection();
-             CallableStatement cs = conn.prepareCall(sql)) {
+        return TransactionManager.executeInTransaction(conn -> {
+            Fine fine = fineRepository.findByIdForUpdate(conn, fineId);
+            if (fine == null) {
+                throw new ResourceNotFoundException("Không tìm thấy phiếu phạt với ID đã cho.");
+            }
+            if ("Completed".equalsIgnoreCase(fine.getPaymentStatus())) {
+                throw new FineAlreadySettledException("Phiếu phạt này đã được thanh toán hoàn tất.");
+            }
 
-            cs.setInt(1, fineId);
-            cs.registerOutParameter(2, Types.INTEGER);
-            cs.execute();
+            int transactionId = paymentTransactionRepository.insertTransaction(conn, fineId);
+            fineRepository.updatePaymentStatus(conn, fineId, "Completed");
 
-            int transactionId = cs.getInt(2);
             System.out.println("[FineService] SUCCESS: Fine #" + fineId +
                     " confirmed as PAID (Completed) by librarian (Transaction ID: " + transactionId + ").");
             return true;
-        } catch (SQLException e) {
-            SqlExceptionMapper.throwMapped(e);
-            return false;
-        }
+        });
     }
 
     public List<Map<String, Object>> getAllFinesDetailed() {

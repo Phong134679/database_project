@@ -12,24 +12,22 @@ import com.library.repository.DigitalJournalRepository;
 import com.library.repository.GrantedLicenseRepository;
 import com.library.repository.LicensePackageRepository;
 import com.library.repository.PersonRepository;
-import com.library.util.DatabaseConnection;
-import com.library.util.SqlExceptionMapper;
+import com.library.repository.ResourceRepository;
+import com.library.util.TransactionManager;
 import com.library.validation.DataValidator;
 import com.library.validation.LicenseValidator;
 import com.library.validation.MemberValidator;
 
-import java.sql.CallableStatement;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Types;
+import java.sql.SQLIntegrityConstraintViolationException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Service class coordinating digital resource access, manual license grant/revoke,
- * and access log retrieval via MySQL Stored Procedures:
- * sp_access_digital_journal, sp_grant_license_manual, sp_revoke_license_manual.
+ * and access log retrieval via pure Java business logic and JDBC transactions.
  */
 public class DigitalJournalService {
 
@@ -38,6 +36,8 @@ public class DigitalJournalService {
     private GrantedLicenseRepository grantedLicenseRepository;
     private AccessLogRepository accessLogRepository;
     private PersonRepository personRepository;
+    private ResourceRepository resourceRepository;
+    private ResourceService resourceService;
 
     public DigitalJournalService() {
         this.journalRepository = new DigitalJournalRepository();
@@ -45,6 +45,8 @@ public class DigitalJournalService {
         this.grantedLicenseRepository = new GrantedLicenseRepository();
         this.accessLogRepository = new AccessLogRepository();
         this.personRepository = new PersonRepository();
+        this.resourceRepository = new ResourceRepository();
+        this.resourceService = new ResourceService(this.resourceRepository, this.grantedLicenseRepository);
     }
 
     public DigitalJournalService(DigitalJournalRepository journalRepository,
@@ -52,38 +54,85 @@ public class DigitalJournalService {
                                  GrantedLicenseRepository grantedLicenseRepository,
                                  AccessLogRepository accessLogRepository,
                                  PersonRepository personRepository) {
+        this(journalRepository, licensePackageRepository, grantedLicenseRepository,
+                accessLogRepository, personRepository, new ResourceRepository());
+    }
+
+    public DigitalJournalService(DigitalJournalRepository journalRepository,
+                                 LicensePackageRepository licensePackageRepository,
+                                 GrantedLicenseRepository grantedLicenseRepository,
+                                 AccessLogRepository accessLogRepository,
+                                 PersonRepository personRepository,
+                                 ResourceRepository resourceRepository) {
+        this(journalRepository, licensePackageRepository, grantedLicenseRepository,
+                accessLogRepository, personRepository, resourceRepository,
+                new ResourceService(resourceRepository, grantedLicenseRepository));
+    }
+
+    public DigitalJournalService(DigitalJournalRepository journalRepository,
+                                 LicensePackageRepository licensePackageRepository,
+                                 GrantedLicenseRepository grantedLicenseRepository,
+                                 AccessLogRepository accessLogRepository,
+                                 PersonRepository personRepository,
+                                 ResourceRepository resourceRepository,
+                                 ResourceService resourceService) {
         this.journalRepository = journalRepository;
         this.licensePackageRepository = licensePackageRepository;
         this.grantedLicenseRepository = grantedLicenseRepository;
         this.accessLogRepository = accessLogRepository;
         this.personRepository = personRepository;
+        this.resourceRepository = resourceRepository;
+        this.resourceService = resourceService;
     }
 
     /**
-     * Executes digital journal access verification and ACCESS_LOG recording
-     * via sp_access_digital_journal(p_person_id, p_resource_id, OUT p_allowed, OUT p_reason, OUT p_log_id).
+     * Evaluates digital journal access rules in Java and records ACCESS_LOG on success
+     * within a single JDBC transaction.
      */
     public Map<String, Object> accessDigitalJournalWithResult(Integer personId, int journalResourceId) {
         DataValidator.validatePositiveId(journalResourceId, "Journal Resource ID");
 
-        String sql = "{CALL sp_access_digital_journal(?, ?, ?, ?, ?)}";
-        try (Connection conn = DatabaseConnection.getConnection();
-             CallableStatement cs = conn.prepareCall(sql)) {
-
-            if (personId != null) {
-                cs.setInt(1, personId);
-            } else {
-                cs.setNull(1, Types.INTEGER);
+        return TransactionManager.executeInTransaction(conn -> {
+            DigitalJournal journal = journalRepository.findById(conn, journalResourceId);
+            if (journal == null) {
+                throw new ResourceNotFoundException("Không tìm thấy DIGITAL_JOURNAL với resource_id đã cho.");
             }
-            cs.setInt(2, journalResourceId);
-            cs.registerOutParameter(3, Types.BOOLEAN);
-            cs.registerOutParameter(4, Types.VARCHAR);
-            cs.registerOutParameter(5, Types.BIGINT);
-            cs.execute();
 
-            boolean allowed = cs.getBoolean(3);
-            String reason = cs.getString(4);
-            long logId = cs.getLong(5);
+            boolean allowed = false;
+            String reason;
+            long logId = 0L;
+
+            if (personId == null) {
+                if (journal.isPublic()) {
+                    allowed = true;
+                    reason = "Guest không định danh được truy cập journal công khai.";
+                } else {
+                    reason = "Guest không định danh chỉ được truy cập journal công khai.";
+                }
+            } else {
+                Person person = personRepository.findById(conn, personId);
+                if (person == null) {
+                    reason = "PERSON ID không tồn tại.";
+                } else {
+                    boolean isAuthor = journalRepository.isAuthorOfResource(conn, personId, journalResourceId);
+                    if (isAuthor) {
+                        allowed = true;
+                        reason = "PERSON là tác giả của journal; bỏ qua kiểm tra License.";
+                    } else if (!resourceService.hasRequiredLicensesConfigured(conn, journalResourceId)) {
+                        reason = "Journal không phải do PERSON này sáng tác và chưa khai báo License yêu cầu.";
+                    } else if (resourceService.hasAllRequiredLicenses(conn, personId, journalResourceId)) {
+                        allowed = true;
+                        reason = "PERSON không phải tác giả nhưng có đầy đủ License bắt buộc.";
+                    } else {
+                        reason = "PERSON không phải tác giả và chưa có đầy đủ License bắt buộc.";
+                    }
+                }
+            }
+
+            if (allowed) {
+                String generatedIp = generateSyntheticTestNetIp();
+                logId = accessLogRepository.insertAccessLog(conn, personId, journalResourceId, generatedIp);
+            }
 
             System.out.println("[DigitalJournalService] Access Log #" + logId + ": "
                     + (allowed ? "ALLOWED" : "DENIED") + " — " + reason);
@@ -93,9 +142,20 @@ public class DigitalJournalService {
             result.put("reason", reason);
             result.put("logId", logId);
             return result;
-        } catch (SQLException e) {
-            SqlExceptionMapper.throwMapped(e);
-            return null;
+        });
+    }
+
+    private String generateSyntheticTestNetIp() {
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        int block = rng.nextInt(3);
+        int host = rng.nextInt(1, 255);
+        switch (block) {
+            case 0:
+                return "192.0.2." + host;
+            case 1:
+                return "198.51.100." + host;
+            default:
+                return "203.0.113." + host;
         }
     }
 
@@ -104,77 +164,66 @@ public class DigitalJournalService {
         return res != null && Boolean.TRUE.equals(res.get("allowed"));
     }
 
+    public boolean isAuthorOfResource(int personId, int journalResourceId) {
+        return journalRepository.isAuthorOfResource(personId, journalResourceId);
+    }
+
     /**
-     * Grants a license package to a person via sp_grant_license_manual(p_person_id, p_license_id, OUT p_grant_id).
+     * Grants a license package to a person via JDBC transaction.
      */
     public GrantedLicense grantLicenseManual(int personId, int licenseId) {
         DataValidator.validatePositiveId(personId, "Person ID");
         DataValidator.validatePositiveId(licenseId, "License ID");
 
-        Person person = personRepository.findById(personId);
-        MemberValidator.validatePersonExists(person, personId);
+        return TransactionManager.executeInTransaction(conn -> {
+            Person person = personRepository.findById(conn, personId);
+            MemberValidator.validatePersonExists(person, personId);
 
-        LicensePackage lp = licensePackageRepository.findById(licenseId);
-        LicenseValidator.validateLicensePackageExists(lp, licenseId);
+            LicensePackage lp = licensePackageRepository.findById(conn, licenseId);
+            LicenseValidator.validateLicensePackageExists(lp, licenseId);
 
-        String sql = "{CALL sp_grant_license_manual(?, ?, ?)}";
-        try (Connection conn = DatabaseConnection.getConnection();
-             CallableStatement cs = conn.prepareCall(sql)) {
-
-            cs.setInt(1, personId);
-            cs.setInt(2, licenseId);
-            cs.registerOutParameter(3, Types.INTEGER);
-            cs.execute();
-
-            int grantId = cs.getInt(3);
-            return new GrantedLicense(grantId, personId, licenseId);
-        } catch (SQLException e) {
-            if ("45000".equals(e.getSQLState()) || e.getErrorCode() == 1644) {
-                throw new InvalidInputException(e.getMessage());
+            if (grantedLicenseRepository.existsByPersonAndLicense(conn, personId, licenseId)) {
+                throw new InvalidInputException("Người dùng đã sở hữu gói License này.");
             }
-            SqlExceptionMapper.throwMapped(e);
-            return null;
-        }
+            try {
+                int grantId = grantedLicenseRepository.insertGrant(conn, personId, licenseId);
+                return new GrantedLicense(grantId, personId, licenseId);
+            } catch (SQLIntegrityConstraintViolationException dup) {
+                throw new InvalidInputException("Người dùng đã sở hữu gói License này.");
+            }
+        });
     }
 
     /**
-     * Revokes a license package from a person via sp_revoke_license_manual(p_person_id, p_license_id, OUT p_deleted).
+     * Revokes a license package from a person via JDBC transaction.
      */
     public boolean revokeLicenseManual(int personId, int licenseId) {
         DataValidator.validatePositiveId(personId, "Person ID");
         DataValidator.validatePositiveId(licenseId, "License ID");
 
-        String sql = "{CALL sp_revoke_license_manual(?, ?, ?)}";
-        try (Connection conn = DatabaseConnection.getConnection();
-             CallableStatement cs = conn.prepareCall(sql)) {
-
-            cs.setInt(1, personId);
-            cs.setInt(2, licenseId);
-            cs.registerOutParameter(3, Types.INTEGER);
-            cs.execute();
-
-            int deleted = cs.getInt(3);
+        return TransactionManager.executeInTransaction(conn -> {
+            int deleted = grantedLicenseRepository.deleteByPersonAndLicense(conn, personId, licenseId);
             if (deleted == 0) {
-                throw new ResourceNotFoundException("Quyền cấp License (Person=" + personId + ", License=" + licenseId + ")", personId);
+                throw new ResourceNotFoundException(
+                        "Quyền cấp License (Person=" + personId + ", License=" + licenseId + ")", personId);
             }
             return true;
-        } catch (SQLException e) {
-            SqlExceptionMapper.throwMapped(e);
-            return false;
-        }
+        });
     }
 
     /**
-     * Revokes a license grant by grant_id while preserving API contract:
-     * resolves (person_id, license_id) and delegates deletion to sp_revoke_license_manual.
+     * Revokes a license grant by grant_id via JDBC transaction.
      */
     public boolean revokeLicenseByGrantId(int grantId) {
         DataValidator.validatePositiveId(grantId, "Grant ID");
-        GrantedLicense existing = grantedLicenseRepository.findById(grantId);
-        if (existing == null) {
-            throw new ResourceNotFoundException("Bản ghi cấp License (GRANTED_LICENSE)", grantId);
-        }
-        return revokeLicenseManual(existing.getPersonId(), existing.getLicenseId());
+
+        return TransactionManager.executeInTransaction(conn -> {
+            int deleted = grantedLicenseRepository.deleteByGrantId(conn, grantId);
+            if (deleted == 0) {
+                throw new ResourceNotFoundException("Bản ghi cấp License (GRANTED_LICENSE)", grantId);
+            }
+            return true;
+        });
     }
 
     public List<LicensePackage> getAllLicensePackages() {
@@ -204,8 +253,32 @@ public class DigitalJournalService {
         return accessLogRepository.findAll();
     }
 
+    /**
+     * Enriches raw access logs with accessedAs ('Guest' or personName) in Java.
+     */
     public List<Map<String, Object>> getAllAccessLogsDetailed() {
-        return accessLogRepository.findAllDetailed();
+        List<Map<String, Object>> rawList = accessLogRepository.findAllDetailedRaw();
+        List<Map<String, Object>> result = new ArrayList<>(rawList.size());
+
+        for (Map<String, Object> raw : rawList) {
+            Integer personId = (Integer) raw.get("personId");
+            String personName = (String) raw.get("personName");
+            String accessedAs = (personId == null) ? "Guest" : personName;
+
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("logId", raw.get("logId"));
+            map.put("personId", personId);
+            map.put("personName", personName);
+            map.put("accessedAs", accessedAs);
+            map.put("journalResourceId", raw.get("journalResourceId"));
+            map.put("journalTitle", raw.get("journalTitle"));
+            map.put("isPublic", raw.get("isPublic"));
+            map.put("journalUrl", raw.get("journalUrl"));
+            map.put("journalFormat", raw.get("journalFormat"));
+            map.put("ipAddress", raw.get("ipAddress"));
+            result.add(map);
+        }
+        return result;
     }
 
     public DigitalJournalRepository getJournalRepository() {

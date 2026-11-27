@@ -163,15 +163,27 @@ public class DatabaseInitializer {
     private static void executeSqlScript(Statement stmt, String filePath) throws Exception {
         try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
             StringBuilder sb = new StringBuilder();
+            String delimiter = ";";
             String line;
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
-                // Loại bỏ inline comments
                 int commentIdx = line.indexOf("--");
                 if (commentIdx >= 0) {
                     line = line.substring(0, commentIdx).trim();
                 }
                 if (line.startsWith("//") || line.isEmpty()) {
+                    continue;
+                }
+                if (line.toUpperCase().startsWith("DELIMITER ")) {
+                    delimiter = line.substring("DELIMITER ".length()).trim();
+                    sb.setLength(0);
+                    continue;
+                }
+                // Skip non-standard delimiter blocks (Stored Procedures / Functions)
+                if (!";".equals(delimiter)) {
+                    if (line.endsWith(delimiter)) {
+                        sb.setLength(0);
+                    }
                     continue;
                 }
                 sb.append(line).append(" ");
@@ -187,14 +199,14 @@ public class DatabaseInitializer {
     }
 
     public static void main(String[] args) {
-        String schema = "Project/schema.sql";
-        String sampleData = "Project/sample_data.sql";
+        String schema = "Project/01_create_database_final_v2.sql";
+        String sampleData = "Project/02_insert_data_final_v2.sql";
 
         if (!new File(schema).exists()) {
-            schema = "schema.sql";
+            schema = "01_create_database_final_v2.sql";
         }
         if (!new File(sampleData).exists()) {
-            sampleData = "sample_data.sql";
+            sampleData = "02_insert_data_final_v2.sql";
         }
 
         boolean success = initializeDatabase(schema, sampleData);

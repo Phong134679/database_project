@@ -15,14 +15,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Repository class handling MySQL data persistence for PERSON.
- * In v2 schema, PERSON stores identity only (person_id, name, email, phone).
+ * Repository class handling MySQL data persistence for PERSON via direct JDBC.
  */
 public class PersonRepository {
 
-    /**
-     * Inserts a new Person record and updates personId.
-     */
     public void insertPerson(Person person) {
         String sql = "INSERT INTO PERSON (name, email, phone) VALUES (?, ?, ?)";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -45,29 +41,27 @@ public class PersonRepository {
         }
     }
 
-    /**
-     * Finds a Person by personId.
-     */
-    public Person findById(int personId) {
+    public Person findById(Connection conn, int personId) throws SQLException {
         String sql = "SELECT person_id, name, email, phone FROM PERSON WHERE person_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, personId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return mapRowToPerson(rs);
                 }
             }
-        } catch (SQLException e) {
-            throw new DatabaseException("Lỗi khi tra cứu người dùng ID " + personId + ": " + e.getMessage(), e);
         }
         return null;
     }
 
-    /**
-     * Retrieves all Person records.
-     */
+    public Person findById(int personId) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            return findById(conn, personId);
+        } catch (SQLException e) {
+            throw new DatabaseException("Lỗi khi tra cứu người dùng ID " + personId + ": " + e.getMessage(), e);
+        }
+    }
+
     public List<Person> findAll() {
         List<Person> list = new ArrayList<>();
         String sql = "SELECT person_id, name, email, phone FROM PERSON ORDER BY person_id ASC";
@@ -85,22 +79,34 @@ public class PersonRepository {
     }
 
     /**
-     * Retrieves all persons with optional UNIVERSITY_MEMBER & borrow eligibility details
-     * by left-joining PERSON with VIEW_MEMBERS_DETAILED and checking AUTHOR_OF.
+     * Retrieves raw person, university member, borrow/overdue/fine counts, and author flag
+     * directly from base tables without using VIEW_MEMBERS_DETAILED.
      */
-    public List<Map<String, Object>> findAllDetailed() {
+    public List<Map<String, Object>> findAllDetailedRaw() {
         List<Map<String, Object>> list = new ArrayList<>();
         String sql = "SELECT p.person_id, p.name, p.email, p.phone, " +
-                     "       v.member_id, v.member_type, v.major, v.academic_rank, " +
-                     "       v.loan_duration_days, v.borrow_quota, " +
-                     "       COALESCE(v.active_borrow_count, 0) AS active_borrow_count, " +
-                     "       COALESCE(v.overdue_borrow_count, 0) AS overdue_borrow_count, " +
-                     "       COALESCE(v.unpaid_fine_count, 0) AS unpaid_fine_count, " +
-                     "       COALESCE(v.is_eligible, FALSE) AS is_eligible, " +
+                     "       um.member_id, um.member_type, um.major, um.academic_rank, " +
+                     "       COALESCE(bs.active_borrow_count, 0) AS active_borrow_count, " +
+                     "       COALESCE(bs.overdue_borrow_count, 0) AS overdue_borrow_count, " +
+                     "       COALESCE(fs.unpaid_fine_count, 0) AS unpaid_fine_count, " +
                      "       CASE WHEN EXISTS (SELECT 1 FROM AUTHOR_OF ao WHERE ao.person_id = p.person_id) " +
                      "            THEN TRUE ELSE FALSE END AS is_author " +
                      "FROM PERSON p " +
-                     "LEFT JOIN VIEW_MEMBERS_DETAILED v ON v.person_id = p.person_id " +
+                     "LEFT JOIN UNIVERSITY_MEMBER um ON um.person_id = p.person_id " +
+                     "LEFT JOIN ( " +
+                     "    SELECT b.member_id, " +
+                     "           SUM(CASE WHEN b.return_date IS NULL THEN 1 ELSE 0 END) AS active_borrow_count, " +
+                     "           SUM(CASE WHEN b.return_date IS NULL AND b.due_date < CURDATE() THEN 1 ELSE 0 END) AS overdue_borrow_count " +
+                     "    FROM BORROW b " +
+                     "    GROUP BY b.member_id " +
+                     ") bs ON bs.member_id = um.member_id " +
+                     "LEFT JOIN ( " +
+                     "    SELECT b.member_id, COUNT(*) AS unpaid_fine_count " +
+                     "    FROM FINE f " +
+                     "    INNER JOIN BORROW b ON b.borrow_id = f.borrow_id " +
+                     "    WHERE f.payment_status = 'Unpaid' " +
+                     "    GROUP BY b.member_id " +
+                     ") fs ON fs.member_id = um.member_id " +
                      "ORDER BY p.person_id ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
@@ -108,62 +114,24 @@ public class PersonRepository {
 
             while (rs.next()) {
                 Map<String, Object> map = new LinkedHashMap<>();
-                String name = rs.getString("name");
-                String memberId = rs.getString("member_id");
-                String memberType = rs.getString("member_type");
-                boolean isMember = memberId != null;
-                boolean isAuthor = rs.getBoolean("is_author");
-                int activeCount = rs.getInt("active_borrow_count");
-                boolean hasOverdue = rs.getInt("overdue_borrow_count") > 0;
-                boolean hasUnpaidFines = rs.getInt("unpaid_fine_count") > 0;
-                int quota = rs.getInt("borrow_quota");
-                boolean isEligible = isMember && rs.getBoolean("is_eligible");
-
                 map.put("personId", rs.getInt("person_id"));
-                map.put("name", name);
+                map.put("name", rs.getString("name"));
                 map.put("email", rs.getString("email"));
                 map.put("phone", rs.getString("phone"));
-                map.put("memberId", memberId);
-                map.put("isMember", isMember);
-                map.put("isAuthor", isAuthor);
-                map.put("memberType", memberType);
+                map.put("memberId", rs.getString("member_id"));
+                map.put("memberType", rs.getString("member_type"));
                 map.put("major", rs.getString("major"));
                 map.put("academicRank", rs.getString("academic_rank"));
-                map.put("loanDurationDays", isMember ? rs.getInt("loan_duration_days") : 0);
-                map.put("borrowQuota", isMember ? quota : 0);
-                map.put("activeBorrowsCount", activeCount);
-                map.put("hasOverdue", hasOverdue);
-                map.put("hasUnpaidFines", hasUnpaidFines);
-                map.put("isEligibleToBorrow", isEligible);
-                map.put("ineligibilityReason", buildIneligibilityReason(
-                        name, isMember, hasOverdue, hasUnpaidFines, activeCount, quota, isEligible));
+                map.put("activeBorrowsCount", rs.getInt("active_borrow_count"));
+                map.put("overdueBorrowsCount", rs.getInt("overdue_borrow_count"));
+                map.put("unpaidFinesCount", rs.getInt("unpaid_fine_count"));
+                map.put("isAuthor", rs.getBoolean("is_author"));
                 list.add(map);
             }
         } catch (SQLException e) {
             throw new DatabaseException("Lỗi khi truy xuất danh sách người dùng chi tiết: " + e.getMessage(), e);
         }
         return list;
-    }
-
-    private String buildIneligibilityReason(String name, boolean isMember, boolean hasOverdue,
-                                            boolean hasUnpaidFines, int activeCount, int quota, boolean isEligible) {
-        if (isEligible) {
-            return null;
-        }
-        if (!isMember) {
-            return "Người dùng [" + name + "] không phải UNIVERSITY_MEMBER; chỉ UNIVERSITY_MEMBER mới được phép mượn sách (BR01).";
-        }
-        if (hasOverdue) {
-            return "Thành viên [" + name + "] đang có sách mượn quá hạn chưa trả (BR05).";
-        }
-        if (hasUnpaidFines) {
-            return "Thành viên [" + name + "] còn phiếu phạt ở trạng thái Unpaid. "
-                    + "Yêu cầu thanh toán trước khi tiếp tục mượn mới (BR05).";
-        }
-        if (activeCount >= quota) {
-            return "Thành viên [" + name + "] đã đạt hạn mức mượn tối đa (" + activeCount + "/" + quota + ") theo quy chế BR05.";
-        }
-        return "Không đủ điều kiện mượn sách.";
     }
 
     private Person mapRowToPerson(ResultSet rs) throws SQLException {

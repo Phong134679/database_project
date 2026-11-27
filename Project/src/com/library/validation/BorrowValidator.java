@@ -5,8 +5,6 @@ import com.library.model.Borrow;
 
 /**
  * Validator for borrow entity existence checks.
- * Availability and return eligibility are enforced by MySQL
- * (sp_borrow_book and sp_return_book).
  */
 public final class BorrowValidator {
 

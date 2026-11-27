@@ -1,411 +1,141 @@
 # Digital Library Management System & Open Repository
-> Hệ thống Quản lý Thư viện số và Lưu trữ mở — Dự án Cơ sở dữ liệu & Ứng dụng Java tương tác MySQL.
 
-Dự án được xây dựng theo mô hình kiến trúc **MVC (Model - View - Controller)** kết hợp **Repository Pattern**, kết nối và xử lý dữ liệu trực tiếp với hệ quản trị cơ sở dữ liệu **MySQL**.
-
----
-
-## Những Điểm Mới & Cập nhật Nâng cấp Dự án (Changelog & Upgrades)
-
-So với phiên bản khung cơ bản ban đầu, dự án đã được nâng cấp và hoàn thiện toàn diện với các bổ sung trọng tâm:
-
-* **Tích hợp Web Client SPA & REST API Server thuần JDK**: Bổ sung giao diện Web trang đơn (HTML5, CSS3, Vanilla JavaScript) với 5 Tab nghiệp vụ trực quan, kết nối với backend thông qua máy chủ REST API siêu nhẹ sử dụng `com.sun.net.httpserver.HttpServer` có sẵn trong JDK 11 và thư viện `Gson 2.10.1`. Giữ trọn vẹn kiến trúc Java 11 + JDBC thuần, không phụ thuộc Spring Boot, Maven hay Gradle.
-* **Đảm bảo toàn vẹn giao dịch (ACID Transactions)**: Tái cấu trúc các Repository (`BorrowRepository`, `FineRepository`, `PaymentTransactionRepository`) và Service để dùng chung một `java.sql.Connection` khi thực thi các luồng liên bảng (Mượn sách: INSERT borrow + UPDATE copy; Trả sách: UPDATE borrow + UPDATE copy + INSERT fine; Trả góp: INSERT transaction + UPDATE fine) với `setAutoCommit(false)`, `commit()` và `rollback()`.
-* **Phân định Tài liệu số Mở (Open Access) & Bãi bỏ thuộc tính `doi`**: Bổ sung cờ `is_public` cho bảng `DIGITAL_JOURNAL`, cho phép mọi bạn đọc kể cả khách vãng lai (`GUEST`) truy cập bài báo mở mà không bị chặn bản quyền. Đồng thời, đánh giá chuyên sâu và **loại bỏ hoàn toàn thuộc tính `doi`** khỏi `DIGITAL_JOURNAL` do độc giả truy cập trực tiếp bài báo qua liên kết URL/giao diện hệ thống mà không cần định danh độc lập DOI cho từng bản online, giúp hệ thống dễ dàng tiếp nhận các tài liệu số nội bộ (khóa luận, đồ án sinh viên, đề tài NCKH cấp trường).
-* **Bãi bỏ Chức năng Download & Tinh giản Bảng Nhật ký `ACCESS_LOG` (BR13 & FR08)**: Chuyển dịch toàn diện sang mô hình "Đọc trực tuyến" (Online Reader / In-browser Viewer) để bảo vệ bản quyền tri thức và loại bỏ thuộc tính `download_success`. Đồng thời, **bỏ theo dõi `person_id`** (chỉ ghi nhận địa chỉ mạng `ip_address` để bảo đảm tính riêng tư cho độc giả) và **bỏ thuộc tính `access_timestamp`**. Bảng `ACCESS_LOG` được tinh gọn tối đa thành cấu trúc 3 cột siêu nhẹ (`log_id`, `journal_resource_id`, `ip_address`), tối ưu hóa tốc độ ghi dữ liệu ở mức cao nhất.
-* **Tối ưu hóa CORS & Cache-Control**: Máy chủ API tự động cấu hình CORS header mở và cơ chế `Cache-Control: no-cache, no-store, must-revalidate`, ngăn ngừa lỗi cache mã nguồn cũ và hoạt động mượt mà trên mọi trình duyệt hiện đại (Brave, Chrome, Firefox, Edge).
-* **Tách bạch & Tối ưu luồng kết nối CSDL**: Tách riêng chức năng xác thực tài khoản MySQL Server và kết nối đến database cụ thể; bọc tập trung trong khối `try-catch`, tự động ném Exception khi gặp lỗi kết nối và yêu cầu người dùng khởi tạo thủ công nếu database trả về `null`.
-* **Bổ sung Modun Validation Chuyên biệt (`com.library.validation`)**: Phân tách toàn bộ logic kiểm tra dữ liệu và ràng buộc nghiệp vụ ra khỏi Service (gồm `DataValidator`, `MemberValidator`, `BorrowValidator`, `FineValidator`, `LicenseValidator`).
-* **Bổ sung Modun Exception Chuẩn hóa (`com.library.exception`)**: Xây dựng cây ngoại lệ kế thừa `RuntimeException`, trang bị mã lỗi nghiệp vụ riêng (`errorCode`) cho từng quy chế (BR01, BR02, BR04, BR05, BR10, BR11); bọc `SQLException` thành `DatabaseException` ném lên tầng Service.
-* **Bổ sung Bộ Kiểm thử Đơn vị (`com.library.test`)**: Cung cấp bộ test độc lập [`ValidationAndExceptionTest.java`](Project/src/com/library/test/ValidationAndExceptionTest.java) chạy 19 test cases tự động kiểm chứng toàn bộ ngoại lệ và thẩm định truy cập tài liệu số mà không phụ thuộc CSDL live.
-* **Hiện thực trọn vẹn 4 Validation Cases**: Hoàn thành 4 kịch bản kiểm thử nghiệp vụ theo SRS Phase 1 trên MySQL thật (phân quyền mượn sách BR01/BR05, kiểm soát bản quyền tài liệu số BR04/BR12/BR13, tự động sinh phạt trễ hạn FR05/BR02, và thanh toán trả góp tiền phạt FR06/BR11).
-* **Mở rộng kiến trúc MVC + Repository Pattern**: Hiện thực đầy đủ 15 Model POJOs, 10 Repositories (bổ sung `ResourceRepository` truy vấn tối ưu cho Web) và 4 Services bao quát toàn bộ 15 bảng dữ liệu trong CSDL.
-* **Kịch bản Sinh Dữ liệu Lớn & Tiện ích khởi tạo CSDL**: Cung cấp kịch bản [`Project/seed_large_dataset.sql`](Project/seed_large_dataset.sql) sinh hàng nghìn dòng dữ liệu (5.000 log truy cập, 1.000 bản sao sách) để kiểm thử hiệu năng, công cụ [`DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java), script khởi chạy tự động [`start_server.sh`](Project/start_server.sh), chuẩn hóa classpath tương đối cho Eclipse và template cấu hình mẫu an toàn.
+Hệ thống Quản lý Thư viện Số và Kho Lưu trữ Mở — ứng dụng web full-stack sử dụng **Java 11+ (JDK HttpServer + JDBC thuần + Gson)**, **MySQL 8.0+** và giao diện **HTML/CSS/Vanilla JavaScript** (Single Page Application).
 
 ---
 
-## 1. Hướng dẫn Setup & Cài đặt Môi trường (Setup Guide)
+## 1. Tính năng chính
 
-Mục này dành cho mọi thành viên trong nhóm khi clone mã nguồn về máy, giúp phân định rõ những gì **cần cài đặt thêm** và những gì **đã có sẵn trong dự án**, đảm bảo môi trường và thư viện hoạt động đồng nhất.
-
-### 1.1. Những thành phần ĐÃ CÓ SẴN trong mã nguồn (Không cần tải thêm)
-* **Thư viện MySQL JDBC Driver**:
-  * File [`Project/lib/mysql-connector-j-26.7.0.jar`](Project/lib/mysql-connector-j-26.7.0.jar) đã được tích hợp sẵn trong thư mục `lib/` của dự án.
-  * Đã được cấu hình liên kết sẵn trong file [`.classpath`](Project/.classpath) của Eclipse bằng đường dẫn tương đối. Bạn **không cần** phải tải thêm file `.jar` từ bên ngoài.
-* **Cấu hình dự án Eclipse**:
-  * Các file metadata dự án [`.project`](Project/.project), [`.classpath`](Project/.classpath) và [`.settings`](Project/.settings) đã chuẩn hóa cấu trúc source folder (`src/`), output folder (`bin/`), bảng mã UTF-8 và liên kết thư viện driver.
-* **Script Cơ sở Dữ liệu**:
-  * [`Project/schema.sql`](Project/schema.sql): Script tạo database `library_db` và định nghĩa 15 bảng chuẩn quan hệ.
-  * [`Project/sample_data.sql`](Project/sample_data.sql): Script nạp dữ liệu mẫu bao quát toàn bộ thực thể và các ca kiểm thử nghiệp vụ.
-* **Công cụ Khởi tạo Cơ sở Dữ liệu Tự động**:
-  * [`Project/src/com/library/util/DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java): Tiện ích nạp tự động `schema.sql` và `sample_data.sql` qua JDBC mà không cần cài đặt dòng lệnh MySQL CLI.
-* **Cấu hình mẫu**:
-  * [`Project/src/db.properties.example`](Project/src/db.properties.example): Template mẫu cấu hình kết nối database an toàn khi đẩy lên Git.
+- **Danh mục Tài nguyên (`RESOURCE`)**: Quản lý sách in (`PHYSICAL_BOOK`), tạp chí số (`DIGITAL_JOURNAL`), và các tài nguyên có đồng thời cả hai định dạng; theo dõi số bản sao vật lý (`BOOK_COPY`) và số gói bản quyền yêu cầu (`RESOURCE_LICENSE`).
+- **Mượn & Trả sách (`BORROW`)**:
+  - Chỉ thành viên đại học (`UNIVERSITY_MEMBER`) được mượn sách về nhà:
+    - **Sinh viên (`STUDENT`)**: Tối đa **3** cuốn, thời hạn **14 ngày**.
+    - **Giảng viên (`FACULTY`)**: Tối đa **10** cuốn, thời hạn **30 ngày**.
+  - Tự động chặn mượn nếu thành viên đang giữ sách quá hạn, có phiếu phạt chưa thanh toán, đạt giới hạn mượn, bản sao không sẵn sàng, hoặc thiếu gói bản quyền (tác giả của sách được miễn kiểm tra bản quyền cho chính tài nguyên đó).
+  - Trả sách trễ hạn tự động phát sinh hoặc cộng dồn phiếu phạt **50,000 VND** (`Unpaid`).
+- **Quản lý Tiền phạt (`FINE` & `PAYMENT_TRANSACTION`)**: Thủ thư xác nhận thanh toán phiếu phạt (`Unpaid` → `Completed`) và lưu lịch sử giao dịch.
+- **Truy cập Tạp chí Số & Bản quyền (`DIGITAL_JOURNAL`, `LICENSE_PACKAGE`, `GRANTED_LICENSE`, `ACCESS_LOG`)**:
+  - **Guest** (không định danh): Chỉ truy cập được tạp chí công khai (`is_public = TRUE`).
+  - **Người dùng định danh (`PERSON`)**: Được truy cập nếu là tác giả (`AUTHOR_OF`) hoặc sở hữu đầy đủ các gói bản quyền bắt buộc (`GRANTED_LICENSE`).
+  - Mọi lượt truy cập hợp lệ đều được ghi nhận vào `ACCESS_LOG`.
+  - Hỗ trợ cấp và thu hồi quyền bản quyền thủ công cho từng `PERSON`.
 
 ---
 
-### 1.2. Những phần mềm BẮT BUỘC PHẢI CÀI ĐẶT trên máy cá nhân
-Trước khi chạy dự án, máy tính của bạn cần đảm bảo đã cài đặt các phần mềm sau:
+## 2. Cấu trúc thư mục
 
-1. **Java Development Kit (JDK 11 trở lên)**:
-   * *Yêu cầu*: Tối thiểu JDK 11 (khuyến nghị OpenJDK 11, JDK 17 LTS, JDK 21 LTS hoặc mới hơn).
-   * *Kiểm tra phiên bản trên máy*:
-     ```bash
-     java -version
-     javac -version
-     ```
-   * *Cài đặt trên Ubuntu/Debian (Linux)*:
-     ```bash
-     sudo apt update
-     sudo apt install openjdk-11-jdk
-     ```
-   * *Cài đặt trên Windows / macOS*: Tải bộ cài từ [Eclipse Adoptium (Temurin)](https://adoptium.net/) hoặc Oracle JDK.
-
-2. **Hệ quản trị CSDL MySQL Server (MySQL 8.0 trở lên)**:
-   * *Yêu cầu*: MySQL Server đang khởi chạy trên cổng `3306`. *(Không bắt buộc phải dùng MySQL CLI vì dự án đã hỗ trợ tự động khởi tạo bằng Java)*.
-   * *Kiểm tra dịch vụ MySQL*:
-     ```bash
-     sudo systemctl status mysql
-     ```
-   * *Cài đặt trên Ubuntu/Debian (Linux)*:
-     ```bash
-     sudo apt update
-     sudo apt install mysql-server
-     sudo systemctl start mysql
-     ```
-   * *Cài đặt trên Windows*: Sử dụng bộ cài MySQL Installer (chọn MySQL Server 8.0) hoặc XAMPP/WampServer (chú ý cấu hình port 3306).
-
-3. **Môi trường phát triển (IDE)**:
-   * **Khuyến nghị**: **Eclipse IDE for Java Developers** (vì dự án đã chứa sẵn cấu hình `.project` và `.classpath` tương thích 100%).
-   * *Lựa chọn thay thế*: Có thể sử dụng **IntelliJ IDEA** hoặc **VS Code** (kèm bộ extension *Extension Pack for Java*).
-
----
-
-### 1.3. Các bước thiết lập & Chạy dự án từng bước (Step-by-Step)
-
-#### Bước 1: Khởi tạo Cơ sở Dữ liệu MySQL
-
-Trước khi khởi chạy hệ thống, cơ sở dữ liệu `library_db` cần được khởi tạo theo một trong hai cách sau:
-
-* **Cách 1: Khởi tạo qua tiện ích Java (Khuyên dùng)**:
-  * Sau khi cấu hình file `db.properties` (ở Bước 2), bạn mở file [`Project/src/com/library/util/DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java) trong Eclipse $\rightarrow$ Nhấp chuột phải chọn **Run As** $\rightarrow$ **Java Application**.
-  * Tiện ích sẽ kết nối qua JDBC, tạo CSDL `library_db`, chạy `schema.sql` tạo 15 bảng và chạy `sample_data.sql` nạp dữ liệu mẫu hoàn tất trong vài giây.
-
-* **Cách 2: Khởi tạo Thủ công qua Terminal / MySQL CLI**:
-  * Nếu muốn chủ động khởi tạo bằng dòng lệnh MySQL CLI:
-    ```bash
-    # 1. Tạo database library_db và 15 bảng
-    mysql -u root -p < Project/schema.sql
-
-    # 2. Nạp dữ liệu mẫu
-    mysql -u root -p < Project/sample_data.sql
-    ```
-
-#### Bước 2: Cấu hình thông tin kết nối Cơ sở Dữ liệu
-1. Mở file [`Project/src/db.properties`](Project/src/db.properties).
-2. Điền chính xác tài khoản (`db.username`) và mật khẩu (`db.password`) MySQL trên máy của bạn:
-   ```properties
-   db.url=jdbc:mysql://localhost:3306/library_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8
-   db.username=root
-   db.password=ĐIỀN_MẬT_KHẨU_MYSQL_CỦA_BẠN
-   db.driver=com.mysql.cj.jdbc.Driver
-   ```
-
-#### Bước 3: Mở dự án trong Eclipse & Đồng bộ thư viện
-1. Khởi động Eclipse $\rightarrow$ Chọn menu **File** $\rightarrow$ **Import...**
-2. Chọn **General** $\rightarrow$ **Existing Projects into Workspace** $\rightarrow$ Bấm **Next**.
-3. Tại ô **Select root directory**, bấm **Browse...** và trỏ đến thư mục `Project` (nằm bên trong thư mục `database`). Bấm **Finish**.
-4. **Đồng bộ thư viện & File mới**:
-   * Nhấp chuột phải vào tên dự án `Project` trong cửa sổ *Package Explorer* $\rightarrow$ Chọn **Refresh** (hoặc nhấn phím **`F5`**).
-   * Kiểm tra trong mục **Referenced Libraries**: Đảm bảo file `mysql-connector-j-26.7.0.jar` đã hiển thị bình thường.
-   * (Nếu có cảnh báo): Vào menu **Project** $\rightarrow$ **Clean...** $\rightarrow$ Bấm **Clean**.
-
-#### Bước 4: Chạy kiểm thử ứng dụng
-* Mở file [`Project/src/com/library/Main.java`](Project/src/com/library/Main.java).
-* Nhấp chuột phải $\rightarrow$ Chọn **Run As** $\rightarrow$ **Java Application**.
-* Ứng dụng sẽ thực hiện:
-  1. Kiểm tra xác thực tài khoản MySQL Server.
-  2. Kiểm tra kết nối tới database `library_db` (nếu kết nối trả về `null` sẽ in thông báo yêu cầu người dùng khởi tạo thủ công).
-  3. Khi kết nối thành công, tự động thực thi trực tiếp toàn bộ **4 Validation Cases** (Test 01 đến Test 04) với kết quả chi tiết trên Console.
-
----
-
-## 2. Tổng quan Kiến trúc Hệ thống
-
-Hệ thống được tổ chức phân tầng chặt chẽ theo mô hình **MVC** kết hợp **Repository Pattern**:
-
-### 2.1. Sơ đồ Luồng Tương tác Toàn diện (Web Client ↔ Java API ↔ MySQL Server)
-Sơ đồ dưới đây mô phỏng chi tiết luồng trao đổi dữ liệu từ giao diện người dùng qua các tầng backend và lưu trữ cơ sở dữ liệu, thể hiện rõ các giao thức kết nối và cổng mạng tương ứng:
-
-```mermaid
-flowchart LR
-    subgraph Client["1. Lớp Giao diện Người dùng (Web Client)"]
-        Browser["Trình duyệt Web\n(Brave / Chrome / Firefox / Edge)\nHTML5 + CSS3 + Vanilla JavaScript\n(Single Page Application)"]
-    end
-
-    subgraph Backend["2. Lớp Máy chủ Ứng dụng (Java 11 REST API Server)"]
-        Server["JDK HttpServer: ApiServer\n(Port 8080)"]
-        Handlers["Tầng HttpHandler\n(Resources, Copies, Borrows,\nFines, Digital Journals, Members, Logs)"]
-        Services["Tầng Dịch vụ & Thẩm định\n(BorrowService, FineService,\nMemberService, DigitalJournalService)"]
-        Repos["Tầng Repository\n(10 Repositories\nShared Connection ACID Transaction)"]
-    end
-
-    subgraph Database["3. Lớp Cơ sở Dữ liệu (Database Storage)"]
-        MySQL[("MySQL Community Server\n(Database: library_db)\n15 Bảng InnoDB UTF-8 MB4")]
-    end
-
-    Browser <==>|"GIAO THỨC: HTTP/1.1 REST\nĐịnh dạng: JSON (UTF-8)\nCổng mạng: TCP Port 8080\nHeader: CORS (*), Cache-Control: no-cache"| Server
-    Server --> Handlers
-    Handlers --> Services
-    Services --> Repos
-    Repos <==>|"GIAO THỨC: MySQL Client/Server Protocol\nBộ điều khiển: com.mysql.cj.jdbc.Driver\nCổng mạng: TCP Port 3306\nĐặc tính: Quản lý giao dịch ACID"| MySQL
-```
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Browser as "Trình duyệt Web (Web Client)"
-    participant StaticHandler as "StaticWebHandler (HttpServer)"
-    participant ApiServer as "REST API Handlers (HttpServer)"
-    participant Service as "Tầng Nghiệp vụ (Service & Validator)"
-    participant Repo as "Tầng Repository (Shared Connection)"
-    participant MySQL as "MySQL Database (Port 3306)"
-
-    Note over Browser,StaticHandler: Giai đoạn 1: Nạp Giao diện Single Page Application (SPA)
-    Browser->>StaticHandler: HTTP GET / (hoặc /index.html, /style.css, /app.js)
-    Note right of Browser: Giao thức: HTTP/1.1 (Cổng TCP 8080)
-    StaticHandler-->>Browser: Trả về tài nguyên tĩnh (HTML5, CSS3, JS UTF-8)
-
-    Note over Browser,MySQL: Giai đoạn 2: Gọi Dữ liệu & Xử lý Giao dịch Nghiệp vụ
-    Browser->>ApiServer: HTTP GET / POST /api/{endpoint} (Payload: JSON UTF-8)
-    Note right of Browser: Giao thức: RESTful HTTP/1.1 | Content-Type: application/json
-    ApiServer->>Service: Tiếp nhận Request, gọi Service tương ứng
-    Service->>Service: Thẩm định tính hợp lệ & Ràng buộc nghiệp vụ (Validators: BR01 - BR13)
-    Service->>Repo: Khởi tạo Transaction (conn.setAutoCommit(false))
-    Repo->>MySQL: Thực thi các câu lệnh SQL qua PreparedStatement
-    Note right of Repo: Giao thức: MySQL JDBC Protocol (Cổng TCP 3306)
-    MySQL-->>Repo: Trả về tập kết quả (ResultSet) hoặc số dòng ảnh hưởng
-    Service->>Repo: Xác nhận hoàn tất giao dịch (conn.commit())
-    Repo-->>Service: Ánh xạ kết quả sang POJO / DTO
-    Service-->>ApiServer: Trả về dữ liệu nghiệp vụ
-    ApiServer-->>Browser: HTTP 200 OK | Trả JSON UTF-8 (Kèm Header CORS & No-Cache)
+```text
+database_project/
+├── Project/
+│   ├── src/
+│   │   ├── db.properties                         # Cấu hình kết nối MySQL (không commit mật khẩu thật)
+│   │   └── com/library/
+│   │       ├── Main.java                         # Kiểm tra kết nối MySQL Server & database library_db
+│   │       ├── api/                              # ApiServer (port 8080), HttpUtils, JsonUtils
+│   │       ├── service/                          # Logic nghiệp vụ & điều phối JDBC transaction
+│   │       ├── repository/                       # Truy vấn JDBC (PreparedStatement) trên 14 bảng MySQL
+│   │       ├── model/                            # 10 lớp Entity POJO
+│   │       ├── validation/                       # Kiểm tra dữ liệu đầu vào & tồn tại thực thể
+│   │       ├── exception/                        # Hệ thống ngoại lệ chuẩn hóa (errorCode + HTTP status)
+│   │       └── util/                             # DatabaseConnection, DatabaseInitializer, TransactionManager
+│   ├── web/                                      # Giao diện Web SPA (index.html, style.css, app.js)
+│   ├── lib/                                      # Thư viện: mysql-connector-j, gson
+│   ├── 01_create_database_final_v2.sql           # Script tạo database library_db và 14 bảng
+│   ├── 02_insert_data_final_v2.sql               # Script nạp dữ liệu mẫu
+│   └── start_server.sh                           # Script biên dịch & khởi chạy server trên cổng 8080
+├── SQL_Reference/                                # Bộ SQL tham khảo độc lập (Views/Functions/Procedures)
+└── README.md
 ```
 
 ---
 
-### 2.2. Sơ đồ Mô phỏng Cấu trúc Phân tầng của Backend
-Mô hình cấu trúc nội bộ của hệ thống backend Java phân định rành mạch trách nhiệm giữa các gói mã nguồn, bảo đảm nguyên tắc Single Responsibility (SRP) và tính độc lập mô-đun:
+## 3. Yêu cầu môi trường
 
-```mermaid
-flowchart TD
-    subgraph HTTP_Layer["1. Tầng Giao Tiếp Mạng & Điều Phối HTTP (com.library.api)"]
-        ApiServer["ApiServer (com.sun.net.httpserver.HttpServer - Port 8080)"]
-        ResourceHandler["ResourceHandler\n(GET /api/resources)"]
-        CopyHandler["CopyHandler\n(GET /api/copies)"]
-        BorrowHandler["BorrowHandler\n(GET, POST /api/borrows, /return)"]
-        FineHandler["FineHandler\n(GET /api/fines, POST /payments)"]
-        DigitalHandler["DigitalJournalHandler\n(POST /api/digital-journals/.../access)"]
-        MemberHandler["MemberHandler\n(GET /api/members)"]
-        LogHandler["AccessLogHandler\n(GET /api/access-logs)"]
-        StaticHandler["StaticWebHandler\n(GET /, /index.html, /style.css, /app.js)"]
-        HttpUtils["HttpUtils & JsonUtils\n(CORS, Cache-Control, Exception Mapping, Gson Serializer)"]
-    end
+- **Java Development Kit (JDK)**: Phiên bản **11** trở lên (`java -version`, `javac -version`).
+- **MySQL Server**: Phiên bản **8.0** trở lên đang chạy trên cổng `3306`.
+- *(Không bắt buộc cài Maven, Gradle hay framework ngoài — thư viện JDBC và Gson đã nằm sẵn trong `Project/lib/`).*
 
-    subgraph Business_Layer["2. Tầng Nghiệp Vụ & Thẩm Định Quy Chế (com.library.service & validation)"]
-        BorrowService["BorrowService\n(Mượn/Trả sách, Transaction)"]
-        FineService["FineService\n(Quản lý phạt & Trả góp, Transaction)"]
-        MemberService["MemberService\n(Tư cách độc giả & Quota)"]
-        DigitalService["DigitalJournalService\n(Bản quyền số & Ghi log)"]
-        
-        Validators["Bộ Thẩm Định Quy Chế (com.library.validation)\n• DataValidator (ID, Tiền, Dải ngày)\n• MemberValidator (BR01, BR05)\n• BorrowValidator (BR10, BR02)\n• FineValidator (BR11)\n• LicenseValidator (BR04, BR12)"]
-    end
+---
 
-    subgraph Exception_Layer["3. Phân Cấp Ngoại Lệ Chuẩn Hóa (com.library.exception)"]
-        LibException["LibraryException (RuntimeException)"]
-        BusinessException["BusinessException\n(IneligibleMember, OverdueBooks, OutstandingFine, QuotaExceeded,\nBookNotAvailable, AlreadyReturned, FineSettled, LicenseExpired)"]
-        ValidationException["ValidationException\n(InvalidInput, InvalidAmount, InvalidDateRange)"]
-        DatabaseException["DatabaseException\n(Bọc SQLException từ JDBC)"]
-    end
+## 4. Hướng dẫn cài đặt & Chạy nhanh
 
-    subgraph Data_Layer["4. Tầng Truy Xuất Dữ Liệu (com.library.repository)"]
-        PersonRepo["PersonRepository"]
-        MemberRepo["UniversityMemberRepository"]
-        BorrowRepo["BorrowRepository"]
-        FineRepo["FineRepository"]
-        TxRepo["PaymentTransactionRepository"]
-        ResourceRepo["ResourceRepository"]
-        DigitalRepo["DigitalJournalRepository"]
-        PackageRepo["LicensePackageRepository"]
-        GrantedRepo["GrantedLicenseRepository"]
-        LogRepo["AccessLogRepository"]
-    end
+### Bước 1: Cấu hình kết nối MySQL
+Chỉnh sửa file `Project/src/db.properties` với tài khoản MySQL trên máy của bạn:
 
-    subgraph Core_Layer["5. Tầng Tiện Ích & Mô Hình Thực Thể (com.library.util & model)"]
-        DbConn["DatabaseConnection (Đọc db.properties)"]
-        DbInit["DatabaseInitializer (Nạp schema.sql & sample_data.sql)"]
-        Models["15 Model POJOs (com.library.model)\nPerson, UniversityMember, ExternalAuthor, Resource, PhysicalBook,\nDigitalJournal, BookCopy, Borrow, Fine, PaymentTransaction, AccessLog..."]
-    end
-
-    subgraph Storage_Layer["6. Tầng Lưu Trữ Dữ Liệu (MySQL Database Engine)"]
-        MySQL_DB[("MySQL Database: library_db\n15 Bảng InnoDB UTF-8 MB4\nQuản lý khóa ngoại & Ràng buộc toàn vẹn")]
-    end
-
-    ApiServer --> Handlers & StaticHandler
-    Handlers --> HttpUtils
-    Handlers --> Business_Layer
-    Business_Layer --> Validators
-    Business_Layer -.-> Exception_Layer
-    Business_Layer --> Data_Layer
-    Data_Layer --> DbConn
-    Data_Layer --> Models
-    Data_Layer --> Storage_Layer
+```properties
+db.url=jdbc:mysql://localhost:3306/library_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8
+db.username=root
+db.password=MAT_KHAU_MYSQL_CUA_BAN
+db.driver=com.mysql.cj.jdbc.Driver
 ```
 
+### Bước 2: Khởi tạo cơ sở dữ liệu `library_db`
+Bạn có thể nạp tự động bằng `DatabaseInitializer` (sau khi đã biên dịch) hoặc chạy trực tiếp qua MySQL CLI:
+
+```bash
+mysql -u root -p < Project/01_create_database_final_v2.sql
+mysql -u root -p < Project/02_insert_data_final_v2.sql
+```
+
+Hoặc dùng tiện ích Java có sẵn:
+
+```bash
+cd Project
+mkdir -p bin
+javac -encoding UTF-8 -d bin -cp "lib/*" $(find src -name "*.java")
+cp src/db.properties bin/db.properties
+java -cp "bin:lib/*" com.library.util.DatabaseInitializer
+```
+
+### Bước 3: Khởi động ứng dụng
+Chạy script khởi động (Linux/macOS):
+
+```bash
+cd Project
+./start_server.sh
+```
+
+Hoặc chạy thủ công:
+
+```bash
+cd Project
+java -cp "bin:lib/*" com.library.api.ApiServer 8080
+```
+
+Mở trình duyệt tại: **http://localhost:8080/**
+
 ---
 
-## 3. Chi tiết các thành phần đã được hiện thực (Coded Components)
+## 5. Kiến trúc & Danh sách API
 
-### 3.1. Tầng Cơ sở Dữ liệu (MySQL Layer)
-* [`Project/schema.sql`](Project/schema.sql):
-  * Định nghĩa **15 bảng** chuẩn InnoDB, mã hóa UTF-8 MB4.
-  * Hiện thực quan hệ kế thừa (Inheritance/Subtypes):
-    * `PERSON` (Superclass) $\rightarrow$ `UNIVERSITY_MEMBER` & `EXTERNAL_AUTHOR` (Subclasses).
-    * `RESOURCE` (Superclass) $\rightarrow$ `PHYSICAL_BOOK` & `DIGITAL_JOURNAL` (Subclasses - `DIGITAL_JOURNAL` đã bãi bỏ `doi` để tinh giản, quản lý truy cập trực tiếp bằng URL và cờ `is_public`).
-  * Các bảng quan hệ nhiều-nhiều (N:M): `AUTHOR_OF`, `RESOURCE_LICENSE`.
-  * Nghiệp vụ mượn trả & tài chính: `BOOK_COPY`, `BORROW`, `FINE`, `PAYMENT_TRANSACTION`.
-  * Phân quyền bản quyền tài liệu số: `LICENSE_PACKAGE`, `GRANTED_LICENSE`.
-  * **Tối ưu hiệu năng ghi (Ràng buộc BR13)**: Bảng `ACCESS_LOG` tách rời Foreign Key khỏi Master tables, dùng Independent Indexes để tối ưu tốc độ ghi log tần suất cao; đã loại bỏ `person_id`, `access_timestamp` và `download_success` (chỉ ghi nhận `ip_address` và `journal_resource_id` phục vụ kiểm toán đọc trực tuyến).
-* [`Project/sample_data.sql`](Project/sample_data.sql):
-  * Dữ liệu mẫu kiểm thử bao quát toàn bộ 15 bảng và 4 kịch bản nghiệp vụ (Validation Cases): Phân quyền mượn sách theo vai trò người dùng, kiểm soát hạn bản quyền số, tự động phạt trễ hạn, và thanh toán trả góp tiền phạt.
+Ứng dụng tuân theo kiến trúc phân tầng **API → Service → Repository → MySQL**:
 
----
+- **API Layer (`com.library.api`)**: Tiếp nhận HTTP request, parse/serialize JSON và ánh xạ ngoại lệ sang HTTP status code (`200`, `201`, `400`, `403`, `404`, `500`).
+- **Service Layer (`com.library.service`)**: Chứa toàn bộ logic nghiệp vụ và quản lý transaction qua `TransactionManager` (`setAutoCommit(false)`, `commit()`, `rollback()`).
+- **Repository Layer (`com.library.repository`)**: Thực thi câu lệnh SQL qua `PreparedStatement` trực tiếp trên 14 bảng MySQL, sử dụng `SELECT ... FOR UPDATE` tại các điểm cần khóa đồng thời.
 
-### 3.2. Tầng Thực thể Dữ liệu (`com.library.model`)
-Gồm **15 lớp POJO** ánh xạ 1:1 với cấu trúc bảng trong MySQL, đầy đủ attributes, constructors (no-arg và parameterized), getters/setters, và phương thức `toString()`:
-
-| Nhóm | Lớp Model (POJO) | Mô tả |
+| Method | Endpoint | Mô tả |
 | :--- | :--- | :--- |
-| **Người dùng** | [`Person.java`](Project/src/com/library/model/Person.java) | Superclass lưu trữ thông tin cá nhân dùng chung |
-| | [`UniversityMember.java`](Project/src/com/library/model/UniversityMember.java) | Kế thừa `Person`, đại diện cho Sinh viên hoặc Giảng viên |
-| | [`ExternalAuthor.java`](Project/src/com/library/model/ExternalAuthor.java) | Kế thừa `Person`, đại diện cho Tác giả bên ngoài |
-| **Tài nguyên** | [`Resource.java`](Project/src/com/library/model/Resource.java) | Superclass danh mục tài nguyên chung |
-| | [`PhysicalBook.java`](Project/src/com/library/model/PhysicalBook.java) | Kế thừa `Resource`, đại diện cho Sách in |
-| | [`DigitalJournal.java`](Project/src/com/library/model/DigitalJournal.java) | Kế thừa `Resource`, đại diện cho Tạp chí / Bài báo số (đã bãi bỏ `doi`, quản lý `url`, `format`, `file_size`, `is_public`) |
-| | [`BookCopy.java`](Project/src/com/library/model/BookCopy.java) | Bản sao vật lý của sách kèm mã vạch và trạng thái |
-| **Bản quyền** | [`LicensePackage.java`](Project/src/com/library/model/LicensePackage.java) | Danh mục các gói bản quyền tài liệu số |
-| | [`GrantedLicense.java`](Project/src/com/library/model/GrantedLicense.java) | Quyền truy cập gói tài liệu cấp cho người dùng |
-| | [`ResourceLicense.java`](Project/src/com/library/model/ResourceLicense.java) | Bảng kết hợp (N:M) giữa tài nguyên số và gói bản quyền |
-| **Tác giả** | [`AuthorOf.java`](Project/src/com/library/model/AuthorOf.java) | Bảng kết hợp (N:M) tác giả và tài nguyên |
-| **Mượn & Phạt** | [`Borrow.java`](Project/src/com/library/model/Borrow.java) | Thông tin giao dịch mượn trả sách |
-| | [`Fine.java`](Project/src/com/library/model/Fine.java) | Phiếu phạt phát sinh khi vi phạm quy chế |
-| | [`PaymentTransaction.java`](Project/src/com/library/model/PaymentTransaction.java) | Lịch sử các đợt thanh toán tiền phạt |
-| **Nhật ký** | [`AccessLog.java`](Project/src/com/library/model/AccessLog.java) | Lịch sử truy cập tài liệu số (tinh giản chỉ lưu `log_id`, `journal_resource_id`, `ip_address`) |
+| `GET` | `/api/health` | Kiểm tra trạng thái hoạt động của API Server |
+| `GET` | `/api/resources` | Lấy danh mục tài nguyên (sách in, tạp chí số, bản sao, license) |
+| `GET` | `/api/copies` | Lấy danh sách toàn bộ bản sao sách vật lý |
+| `GET` | `/api/members` | Lấy danh sách người dùng, trạng thái thành viên, hạn mức và điều kiện mượn |
+| `GET` | `/api/borrows` | Lấy danh sách lượt mượn và trạng thái (`Active`, `Overdue`, `Returned`) |
+| `POST` | `/api/borrows` | Tạo lượt mượn mới (`{ "memberId", "copyId" }`) |
+| `POST` | `/api/borrows/{id}/return` | Trả sách (`{ "returnDate"? }`) và tự động tính phạt nếu trễ hạn |
+| `GET` | `/api/fines` | Lấy danh sách phiếu phạt |
+| `GET` | `/api/fines/{id}` | Xem chi tiết một phiếu phạt |
+| `POST` | `/api/fines/{id}/payments` | Xác nhận đã thanh toán phiếu phạt |
+| `GET` | `/api/digital-journals` | Lấy danh sách tạp chí số |
+| `POST` | `/api/digital-journals/{id}/access` | Thẩm định quyền đọc tạp chí số (`{ "personId"? }`) và ghi `ACCESS_LOG` |
+| `GET` | `/api/access-logs` | Lấy nhật ký truy cập tạp chí số |
+| `GET` | `/api/licenses` | Lấy danh sách các gói bản quyền (`LICENSE_PACKAGE`) |
+| `GET` | `/api/granted-licenses` | Lấy danh sách cấp phép bản quyền hiện có |
+| `POST` | `/api/granted-licenses` | Cấp gói bản quyền thủ công (`{ "personId", "licenseId" }`) |
+| `DELETE` | `/api/granted-licenses/{id}` | Thu hồi quyền bản quyền theo `grantId` |
 
 ---
 
-### 3.3. Tầng Tiện ích & Kết nối Cơ sở Dữ liệu (`com.library.util`)
-* [`DatabaseConnection.java`](Project/src/com/library/util/DatabaseConnection.java):
-  * Nạp cấu hình tự động từ file [`db.properties`](Project/src/db.properties).
-  * Tách riêng 2 chức năng kết nối:
-    * Kết nối tài khoản MySQL Server (`getServerConnection()`, `testServerConnection()`) để kiểm tra quyền truy cập trước.
-    * Kết nối đến database `library_db` (`getConnection()`, `testDatabaseConnection()`).
-  * Cấp phát kết nối JDBC an toàn cho toàn bộ tầng Repository.
-* [`DatabaseInitializer.java`](Project/src/com/library/util/DatabaseInitializer.java):
-  * Tiện ích độc lập hỗ trợ kết nối qua JDBC để tạo CSDL `library_db` (UTF-8 MB4), nạp và thực thi các script [`schema.sql`](Project/schema.sql) và [`sample_data.sql`](Project/sample_data.sql) khi cần khởi tạo thủ công.
-* [`db.properties.example`](Project/src/db.properties.example): File cấu hình mẫu để các thành viên thiết lập tài khoản MySQL cá nhân mà không sợ lộ mật khẩu lên Git.
+## 6. Tài liệu SQL Reference (Tùy chọn)
 
----
-
-### 3.4. Tầng Truy xuất Dữ liệu (`com.library.repository`)
-Hệ thống hiện thực đầy đủ **9 lớp Repository** tương tác trực tiếp với MySQL qua `PreparedStatement` và cơ chế tự động đóng tài nguyên `try-with-resources`:
-
-* [`BorrowRepository.java`](Project/src/com/library/repository/BorrowRepository.java): Quản lý bảng `BORROW`, đếm số sách đang mượn (`countActiveBorrowsByMember`), kiểm tra trễ hạn chưa trả (`hasOverdueBorrows`), kiểm tra và đổi trạng thái trong `BOOK_COPY`.
-* [`FineRepository.java`](Project/src/com/library/repository/FineRepository.java): Thao tác bảng `FINE`, lấy ID tự sinh, cập nhật trạng thái thanh toán, kiểm tra độc giả có nợ phạt chưa nộp (`hasUnpaidFinesByMember`).
-* [`PaymentTransactionRepository.java`](Project/src/com/library/repository/PaymentTransactionRepository.java): Lưu các lần thanh toán trả góp vào `PAYMENT_TRANSACTION`, tính tổng lũy kế đã nộp bằng `COALESCE(SUM(amount_paid), 0.00)`.
-* [`PersonRepository.java`](Project/src/com/library/repository/PersonRepository.java): Quản lý bảng cha `PERSON`, tra cứu theo `person_id`, `ssn` và xác định vai trò (`person_type`).
-* [`UniversityMemberRepository.java`](Project/src/com/library/repository/UniversityMemberRepository.java): Quản lý bảng con `UNIVERSITY_MEMBER`, liên kết với `PERSON` để lấy thông tin chi tiết sinh viên/giảng viên.
-* [`DigitalJournalRepository.java`](Project/src/com/library/repository/DigitalJournalRepository.java): Quản lý tài liệu số `DIGITAL_JOURNAL` kết hợp bảng cha `RESOURCE` (file size, URL, định dạng, trạng thái công khai; đã loại bỏ hoàn toàn `doi`).
-* [`LicensePackageRepository.java`](Project/src/com/library/repository/LicensePackageRepository.java): Quản lý các gói bản quyền tài liệu số (`LICENSE_PACKAGE`) và liên kết `RESOURCE_LICENSE`.
-* [`GrantedLicenseRepository.java`](Project/src/com/library/repository/GrantedLicenseRepository.java): Quản lý cấp phép `GRANTED_LICENSE`, truy vấn kiểm tra quyền đọc tài liệu số còn hạn hay không (`hasActiveLicenseForJournal`).
-* [`AccessLogRepository.java`](Project/src/com/library/repository/AccessLogRepository.java): Lưu nhật ký truy cập vào bảng `ACCESS_LOG` với kiến trúc Decoupled Foreign Key tối ưu hiệu năng ghi (BR13) chỉ lưu mã tài liệu số và IP client.
-
----
-
-### 3.5. Tầng Nghiệp vụ (`com.library.service`)
-Hệ thống hiện thực đầy đủ **4 lớp Service** xử lý logic nghiệp vụ và kiểm tra các ràng buộc:
-
-* [`MemberService.java`](Project/src/com/library/service/MemberService.java):
-  * **Hiện thực Test 01 & Ràng buộc BR01, BR05**:
-    * Chặn khách ngoài (`GUEST`, `EXTERNAL_AUTHOR`) mượn sách về nhà (chỉ đọc tại chỗ).
-    * Chặn độc giả đang giữ sách trễ hạn chưa trả hoặc đang nợ tiền phạt chưa thanh toán.
-    * Phân định hạn mức mượn (Sinh viên: tối đa 3 cuốn; Giảng viên: tối đa 10 cuốn).
-    * Phân định thời hạn mượn (Sinh viên: 14 ngày; Giảng viên: 30 ngày).
-* [`BorrowService.java`](Project/src/com/library/service/BorrowService.java):
-  * Tích hợp `MemberService` kiểm tra điều kiện trước khi cho mượn (Test 01).
-  * `processNewBorrow(int memberId, int copyId)`: Tạo phiếu mượn với thời hạn phân hóa theo vai trò.
-  * `returnBook(int borrowId, LocalDate returnDate)`: **Hiện thực Test 03 (FR05, BR02)**: Tự động phát hiện trả trễ hạn và tạo phiếu phạt `FINE` với hạn nộp 14 ngày.
-  * `calculateLatePenalty(int borrowId)`: Tính tiền phạt trễ hạn (10.000 VND / ngày).
-* [`FineService.java`](Project/src/com/library/service/FineService.java):
-  * **Hiện thực Test 04 & Ràng buộc BR11**: Xử lý trả góp tiền phạt theo từng đợt, tự động cập nhật trạng thái `Unpaid` $\rightarrow$ `Partially Paid` $\rightarrow$ `Completed`.
-  * `getRemainingBalance(int fineId)` & `getPaymentHistory(int fineId)`: Theo dõi công nợ và lịch sử thanh toán.
-* [`DigitalJournalService.java`](Project/src/com/library/service/DigitalJournalService.java):
-  * **Hiện thực Test 02 & Ràng buộc BR04, BR12, BR13, FR07, FR08**:
-    * `accessDigitalJournal(personId, journalId, ip, accessDate)`: Kiểm tra xem độc giả có sở hữu gói bản quyền còn hiệu lực cho tài liệu số này không (hoặc là tài liệu Open Access/Tác giả). Cấp quyền đọc trực tuyến (Online Reader), bãi bỏ chức năng download.
-    * Tự động ghi nhận thông tin truy cập vào `ACCESS_LOG` chỉ gồm `journal_resource_id` và `ip_address` (không theo dõi `person_id`, không ghi nhận `access_timestamp`).
-
----
-
-### 3.6. Tầng Điều phối Sự kiện (`com.library.controller`)
-* [`LibraryController.java`](Project/src/com/library/controller/LibraryController.java):
-  * Điều phối toàn bộ các yêu cầu từ phía giao diện: mượn sách (Test 01), đọc tài liệu số (Test 02), trả sách sinh phạt (Test 03), thanh toán tiền phạt (Test 04), hiển thị danh mục và nhật ký truy cập.
-
----
-
-### 3.7. Tầng Ngoại lệ Hệ thống (`com.library.exception`)
-Xây dựng cây phân cấp ngoại lệ kế thừa từ `LibraryException` (Unchecked Exception):
-* **Lỗi CSDL**: [`DatabaseException.java`](Project/src/com/library/exception/DatabaseException.java) (bọc `SQLException` từ tầng Repository ném lên Service).
-* **Lỗi Dữ liệu (Validation)**: [`ValidationException.java`](Project/src/com/library/exception/ValidationException.java), [`InvalidInputException.java`](Project/src/com/library/exception/InvalidInputException.java), [`InvalidAmountException.java`](Project/src/com/library/exception/InvalidAmountException.java), [`InvalidDateRangeException.java`](Project/src/com/library/exception/InvalidDateRangeException.java).
-* **Lỗi Nghiệp vụ (Business Rules)**:
-  * [`ResourceNotFoundException.java`](Project/src/com/library/exception/ResourceNotFoundException.java): Thực thể không tồn tại.
-  * [`IneligibleMemberException.java`](Project/src/com/library/exception/IneligibleMemberException.java): Vi phạm BR01 (khách ngoài mượn sách).
-  * [`BorrowQuotaExceededException.java`](Project/src/com/library/exception/BorrowQuotaExceededException.java): Vi phạm BR05 (vượt quota mượn).
-  * [`OverdueBooksPendingException.java`](Project/src/com/library/exception/OverdueBooksPendingException.java): Vi phạm BR05 (đang giữ sách quá hạn).
-  * [`OutstandingFineException.java`](Project/src/com/library/exception/OutstandingFineException.java): Vi phạm BR05 (đang nợ tiền phạt).
-  * [`BookNotAvailableException.java`](Project/src/com/library/exception/BookNotAvailableException.java): Vi phạm BR10 (bản sao không Available).
-  * [`BookAlreadyReturnedException.java`](Project/src/com/library/exception/BookAlreadyReturnedException.java): Trả sách trùng lặp (BR02).
-  * [`FineAlreadySettledException.java`](Project/src/com/library/exception/FineAlreadySettledException.java): Nộp tiền cho phiếu phạt đã tất toán (BR11).
-  * [`LicenseExpiredException.java`](Project/src/com/library/exception/LicenseExpiredException.java): Gói bản quyền hết hạn khi đọc tài liệu số (BR04/BR12).
-
----
-
-### 3.8. Tầng Kiểm tra Tính Hợp lệ (`com.library.validation`)
-Bóc tách toàn bộ logic kiểm tra ra khỏi tầng Service:
-* [`DataValidator.java`](Project/src/com/library/validation/DataValidator.java): Kiểm tra ID dương, chuỗi ký tự, số tiền `> 0`, dải ngày tháng hợp lệ.
-* [`MemberValidator.java`](Project/src/com/library/validation/MemberValidator.java): Kiểm tra tồn tại người dùng, vai trò (BR01), sách quá hạn, nợ phạt, quota mượn (BR05).
-* [`BorrowValidator.java`](Project/src/com/library/validation/BorrowValidator.java): Kiểm tra tình trạng bản sao sách (BR10) và điều kiện hoàn trả (BR02).
-* [`FineValidator.java`](Project/src/com/library/validation/FineValidator.java): Kiểm tra số tiền phạt, thanh toán và trạng thái phiếu phạt (BR11).
-* [`LicenseValidator.java`](Project/src/com/library/validation/LicenseValidator.java): Kiểm tra tài nguyên số và tính hiệu lực của gói bản quyền (BR04/BR12).
-
----
-
-### 3.9. Chương trình Chạy Kiểm thử (`com.library.Main` & `ValidationAndExceptionTest`)
-* [`Main.java`](Project/src/com/library/Main.java):
-  * Điểm chạy chính (Entry Point) của ứng dụng.
-  * Bọc 2 bước kiểm tra kết nối (tài khoản MySQL Server & database `library_db`) trong khối `try-catch` tập trung:
-    * Ném `Exception` khi gặp sự cố kết nối tài khoản hoặc lỗi JDBC.
-    * In thông báo yêu cầu người dùng khởi tạo thủ công nếu kết nối database trả về `null`.
-  * Khởi tạo toàn bộ Repositories, Services và Controller.
-  * Thực thi kịch bản kiểm thử toàn diện cả **4 Validation Cases** trực tiếp trên cơ sở dữ liệu thật và in log kết quả trực quan trên Console.
-* [`ValidationAndExceptionTest.java`](Project/src/com/library/test/ValidationAndExceptionTest.java):
-  * Bộ kiểm thử Unit Test độc lập chạy 19 kịch bản kiểm thử bao phủ toàn bộ các trường hợp ném ngoại lệ, thẩm định quyền đọc tài liệu số, kiểm tra đặc quyền tác giả và kiểm tra hợp lệ của hệ thống.
-
----
-
-## 4. Quy định Cộng tác Git (.gitignore)
-* Hệ thống đã cấu hình đầy đủ file [`.gitignore`](.gitignore) ở thư mục gốc.
-* **Những thành phần KHÔNG ĐƯỢC push lên Git**:
-  * Thư mục cấu hình workspace của Eclipse: `/.metadata/`, `.recommenders/`.
-  * Các file biên dịch nhị phân: `bin/`, `*.class`, `*.log`.
-  * Thư mục cấu hình IDE cá nhân: `.idea/`, `.vscode/`, `*.iml`.
-  * Các file rác hệ điều hành: `.DS_Store`, `Thumbs.db`.
-  * File mật khẩu kết nối cá nhân: `Project/src/db.properties` (được chặn trên Git, chỉ chia sẻ mẫu qua `db.properties.example`).
+Thư mục [`SQL_Reference/`](SQL_Reference/README.md) cung cấp bộ Views, Stored Functions và Stored Procedures tham khảo độc lập (triển khai trên database thử nghiệm riêng `library_management_reference`) để đối chiếu với cách cài đặt Java + JDBC hiện tại. Thành phần này không tham gia vào quá trình chạy của ứng dụng chính.

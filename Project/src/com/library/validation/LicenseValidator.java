@@ -7,8 +7,6 @@ import com.library.model.Resource;
 
 /**
  * Validator for resource and license package existence checks.
- * License entitlement rules are enforced by MySQL (fn_has_all_required_licenses,
- * sp_access_digital_journal, sp_borrow_book).
  */
 public final class LicenseValidator {
 

@@ -8,15 +8,29 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Repository class handling read-only MySQL data queries for PAYMENT_TRANSACTION.
- * Payment insertion is delegated to MySQL Stored Procedure sp_confirm_fine_payment.
+ * Repository class handling MySQL data persistence and queries for PAYMENT_TRANSACTION via direct JDBC.
  */
 public class PaymentTransactionRepository {
+
+    public int insertTransaction(Connection conn, int fineId) throws SQLException {
+        String sql = "INSERT INTO PAYMENT_TRANSACTION (fine_id, payment_date) VALUES (?, CURRENT_TIMESTAMP)";
+        try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, fineId);
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (keys.next()) {
+                    return keys.getInt(1);
+                }
+            }
+        }
+        throw new SQLException("Không thể lấy transaction_id sau khi INSERT PAYMENT_TRANSACTION.");
+    }
 
     public PaymentTransaction findById(int transactionId) {
         String sql = "SELECT transaction_id, fine_id, payment_date FROM PAYMENT_TRANSACTION WHERE transaction_id = ?";

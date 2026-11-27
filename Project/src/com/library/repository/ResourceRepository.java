@@ -14,8 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Repository class handling data queries for general RESOURCE catalog.
- * In v2 schema, resource kind is determined by subtype tables (PHYSICAL_BOOK / DIGITAL_JOURNAL).
+ * Repository class handling data queries for general RESOURCE catalog via direct JDBC.
  */
 public class ResourceRepository {
 
@@ -56,20 +55,62 @@ public class ResourceRepository {
         return null;
     }
 
+    public boolean isAuthorOfResource(Connection conn, int personId, int resourceId) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM AUTHOR_OF WHERE person_id = ? AND resource_id = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, personId);
+            ps.setInt(2, resourceId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+        }
+        return false;
+    }
+
+    public int countRequiredLicenses(Connection conn, int resourceId) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM RESOURCE_LICENSE WHERE resource_id = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, resourceId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
+                }
+            }
+        }
+        return 0;
+    }
+
     /**
-     * Retrieves all resources from VIEW_RESOURCES_DETAILED with subtype info and license/copy counts.
+     * Retrieves all resources directly from RESOURCE, PHYSICAL_BOOK, DIGITAL_JOURNAL,
+     * RESOURCE_LICENSE, and BOOK_COPY without using VIEW_RESOURCES_DETAILED.
      */
     public List<Map<String, Object>> findAllResourcesDetailed() {
         List<Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT v.resource_id, v.title, v.topic, v.is_public, v.required_license_count, " +
-                     "       v.shelf_location, v.total_copies, v.available_copies, " +
-                     "       v.journal_url, v.file_size, v.journal_format, " +
+        String sql = "SELECT r.resource_id, r.title, r.topic, r.is_public, " +
+                     "       COALESCE(rl_agg.required_license_count, 0) AS required_license_count, " +
+                     "       pb.shelf_location, " +
+                     "       COALESCE(bc_agg.total_copies, 0) AS total_copies, " +
+                     "       COALESCE(bc_agg.available_copies, 0) AS available_copies, " +
+                     "       dj.url AS journal_url, dj.file_size, dj.format AS journal_format, " +
                      "       (pb.resource_id IS NOT NULL) AS is_physical_book, " +
                      "       (dj.resource_id IS NOT NULL) AS is_digital_journal " +
-                     "FROM VIEW_RESOURCES_DETAILED v " +
-                     "LEFT JOIN PHYSICAL_BOOK pb ON pb.resource_id = v.resource_id " +
-                     "LEFT JOIN DIGITAL_JOURNAL dj ON dj.resource_id = v.resource_id " +
-                     "ORDER BY v.resource_id ASC";
+                     "FROM RESOURCE r " +
+                     "LEFT JOIN PHYSICAL_BOOK pb ON pb.resource_id = r.resource_id " +
+                     "LEFT JOIN DIGITAL_JOURNAL dj ON dj.resource_id = r.resource_id " +
+                     "LEFT JOIN ( " +
+                     "    SELECT resource_id, COUNT(*) AS required_license_count " +
+                     "    FROM RESOURCE_LICENSE " +
+                     "    GROUP BY resource_id " +
+                     ") rl_agg ON rl_agg.resource_id = r.resource_id " +
+                     "LEFT JOIN ( " +
+                     "    SELECT resource_id, COUNT(*) AS total_copies, " +
+                     "           SUM(CASE WHEN availability_status = 'Available' THEN 1 ELSE 0 END) AS available_copies " +
+                     "    FROM BOOK_COPY " +
+                     "    GROUP BY resource_id " +
+                     ") bc_agg ON bc_agg.resource_id = r.resource_id " +
+                     "ORDER BY r.resource_id ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {

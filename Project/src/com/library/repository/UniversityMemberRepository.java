@@ -12,14 +12,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Repository class handling MySQL data persistence for UNIVERSITY_MEMBER.
- * In v2 schema, member_id is the independent PK and person_id is a UNIQUE FK to PERSON.
+ * Repository class handling MySQL data persistence for UNIVERSITY_MEMBER via direct JDBC.
  */
 public class UniversityMemberRepository {
 
-    /**
-     * Inserts a new UniversityMember record (assuming Person record exists).
-     */
     public void insertMember(UniversityMember member) {
         String sql = "INSERT INTO UNIVERSITY_MEMBER (member_id, person_id, member_type, major, academic_rank) " +
                      "VALUES (?, ?, ?, ?, ?)";
@@ -38,9 +34,6 @@ public class UniversityMemberRepository {
         }
     }
 
-    /**
-     * Finds a UniversityMember by personId joining with PERSON.
-     */
     public UniversityMember findByPersonId(int personId) {
         String sql = "SELECT p.person_id, p.name, p.email, p.phone, " +
                      "       m.member_id, m.member_type, m.major, m.academic_rank " +
@@ -62,9 +55,6 @@ public class UniversityMemberRepository {
         return null;
     }
 
-    /**
-     * Finds a UniversityMember by memberId (e.g., 'SV2026001').
-     */
     public UniversityMember findByMemberId(String memberId) {
         String sql = "SELECT p.person_id, p.name, p.email, p.phone, " +
                      "       m.member_id, m.member_type, m.major, m.academic_rank " +
@@ -87,15 +77,30 @@ public class UniversityMemberRepository {
     }
 
     /**
-     * Alias for findByMemberId for backward compatibility.
+     * Locks and retrieves a UniversityMember row by memberId within an active transaction.
      */
+    public UniversityMember findByMemberIdForUpdate(Connection conn, String memberId) throws SQLException {
+        String sql = "SELECT p.person_id, p.name, p.email, p.phone, " +
+                     "       m.member_id, m.member_type, m.major, m.academic_rank " +
+                     "FROM UNIVERSITY_MEMBER m " +
+                     "JOIN PERSON p ON m.person_id = p.person_id " +
+                     "WHERE m.member_id = ? " +
+                     "FOR UPDATE";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, memberId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return mapRowToMember(rs);
+                }
+            }
+        }
+        return null;
+    }
+
     public UniversityMember findByMemberCode(String memberCode) {
         return findByMemberId(memberCode);
     }
 
-    /**
-     * Retrieves all UniversityMember records.
-     */
     public List<UniversityMember> findAll() {
         List<UniversityMember> list = new ArrayList<>();
         String sql = "SELECT p.person_id, p.name, p.email, p.phone, " +

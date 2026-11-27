@@ -38,21 +38,25 @@ public class LicensePackageRepository {
         }
     }
 
-    public LicensePackage findById(int licenseId) {
+    public LicensePackage findById(Connection conn, int licenseId) throws SQLException {
         String sql = "SELECT license_id, license_name, description FROM LICENSE_PACKAGE WHERE license_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, licenseId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return mapRowToPackage(rs);
                 }
             }
+        }
+        return null;
+    }
+
+    public LicensePackage findById(int licenseId) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            return findById(conn, licenseId);
         } catch (SQLException e) {
             throw new DatabaseException("Lỗi khi tra cứu gói bản quyền ID " + licenseId + ": " + e.getMessage(), e);
         }
-        return null;
     }
 
     public List<LicensePackage> findPackagesForJournal(int journalResourceId) {
